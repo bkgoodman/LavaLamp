@@ -12,6 +12,9 @@
 #define	NR_LED		93
 //#define	NR_LED		3
 #define	NEOPIXEL_WS2812
+#include "esp_log.h"
+#include "esp_console.h"
+
 //#define	NEOPIXEL_SK6812
 #define	NEOPIXEL_RMT_CHANNEL		RMT_CHANNEL_2
 float hypercos(float i){
@@ -62,8 +65,7 @@ typedef struct ring {
 
 ring  rings[RINGS];
 
-static	void
-test_neopixel()
+static	void test_neopixel(void *parameters)
 {
 	pixel_settings_t px;
   unsigned char ro,go,bo;
@@ -179,8 +181,43 @@ test_neopixel()
     np_set_pixel_rgbw(&px, j , 255, 255, 255, 0);
     /* Handle each ring separately! */
     np_show(&px, NEOPIXEL_RMT_CHANNEL);
-    usleep(2000*10);
+    usleep(1000*10);
   }
+}
+
+static int do_showring_cmd(int argc, char **argv) {
+  printf("SHOWRINGS %d args\n",argc);
+  int i=0;
+  for (i=0;i<argc;i++)
+    printf("  %d - %s\n",i,argv[i]);
+  return 0;
+}
+
+static void initialize_console(void)
+{
+    esp_console_repl_t *repl = NULL;
+    esp_console_repl_config_t repl_config = ESP_CONSOLE_REPL_CONFIG_DEFAULT();
+    repl_config.prompt = "LavaLamp>";
+    esp_console_dev_uart_config_t uart_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_console_new_repl_uart(&uart_config, &repl_config, &repl));
+    ESP_ERROR_CHECK(esp_console_start_repl(repl));
+    const esp_console_cmd_t i2cdump_cmd = {
+        .command = "showring",
+        .help = "SHow Ring Parameters",
+        .hint = NULL,
+        .func = &do_showring_cmd,
+        .argtable = 0L
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&i2cdump_cmd));
+}
+
+static	void console(void *parameters) {
+    /* Register commands */
+    initialize_console();
+    printf("Console init done\n");
+    while(1) {
+      vTaskDelay(100*1000);
+    }
 }
 
 extern	void
@@ -197,6 +234,8 @@ app_main (void)
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
 
     gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
-	test_neopixel();
+	//test_neopixel();
+  xTaskCreate(&test_neopixel, "Neopixels", 8192, NULL, 5, NULL);
+  xTaskCreate(&console, "Console", 8192, NULL, 5, NULL);
 }
 
