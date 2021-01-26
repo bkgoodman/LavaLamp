@@ -1,6 +1,6 @@
 #include 	<stdio.h>
 #include	<string.h>
-#include	"esp_event_loop.h"	//	for usleep
+#include	"esp_event.h"	//	for usleep
 
 #include	"neopixel.h"
 #include	<esp_log.h>
@@ -19,6 +19,10 @@ float hypercos(float i){
 }
 
 int mode =0;
+int divround(const int n, const int d)
+{
+  return ((n < 0) ^ (d < 0)) ? ((n - d/2)/d) : ((n + d/2)/d);
+}
 
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
 	//printf("INT should go to xQueue\r\n");
@@ -27,10 +31,7 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
     mode=0;
 }
 void hue_to_rgb(int hue, unsigned char *ro, unsigned char *go, unsigned char *bo) {
-        int i;
-        int side=0,s2;
         float r,g,b;
-        float avg;
         float max;
         float pi = 3.14159;
         float third = ((float) 2.0f)*pi/3.0f;
@@ -49,13 +50,27 @@ void hue_to_rgb(int hue, unsigned char *ro, unsigned char *go, unsigned char *bo
 short ringsize[RINGS]= {
   (4*8),(4*6),16,12,8,1
 };
+
+typedef struct ring {
+  unsigned short start;
+  unsigned short end;
+  unsigned short size;
+  unsigned long seq;
+  unsigned short pos;
+  unsigned short speed;
+} ring;
+
+ring  rings[RINGS];
+
 static	void
 test_neopixel()
 {
 	pixel_settings_t px;
+  unsigned char ro,go,bo;
 	uint32_t		pixels[NR_LED];
-	int		i;
+	int		i,r;
 	int		rc;
+  ring *rng;
 
 	rc = neopixel_init(NEOPIXEL_PORT, NEOPIXEL_RMT_CHANNEL);
 	ESP_LOGE("main", "neopixel_init rc = %d", rc);
@@ -64,6 +79,23 @@ test_neopixel()
 	for	( i = 0 ; i < NR_LED ; i ++ )	{
 		pixels[i] = 0;
 	}
+
+  /* Initialize ring info */
+  rc=0;
+  for (i=0;i<RINGS;i++) {
+    memset(&rings[i],0,sizeof(ring));
+    rings[i].start=rc;
+    rings[i].size=ringsize[i];
+    rings[i].end=rc+ringsize[i]-1;
+    rc += ringsize[i];
+  }
+
+  rings[0].speed=60;
+  rings[1].speed=55;
+  rings[2].speed=70;
+  rings[3].speed=63;
+  rings[4].speed=54;
+  rings[5].speed=1;
 	px.pixels = (uint8_t *)pixels;
 	px.pixel_count = NR_LED;
 #ifdef	NEOPIXEL_WS2812
@@ -95,16 +127,15 @@ test_neopixel()
 	px.brightness = 0x80;
 	np_show(&px, NEOPIXEL_RMT_CHANNEL);
 
+#if 0
   short pos=0;
   short color=0;
   short posrate=1;
   long seq=0;
   unsigned int hue=0;
-#if 0
   while(1) {
     usleep(2000*10);
     if (mode == 0) {
-      unsigned char ro,go,bo;
       hue_to_rgb(((hue++)>>4) & 0xff,&ro,&go,&bo);
       for	( int j = 0 ; j < NR_LED ; j ++ )	{
         if (j == pos) {
@@ -118,12 +149,34 @@ test_neopixel()
     if (pos++ == NR_LED)
       pos=0;
   }
+  while(1) {
+    /* Clear All */
+    for	( int j = 0 ; j < NR_LED ; j ++ )	
+          np_set_pixel_rgbw(&px, j , 0, 0, 0, 0);
+
+    /* Handle each ring separately! */
+    np_show(&px, NEOPIXEL_RMT_CHANNEL);
+    usleep(2000*10);
+  }
 #endif
   while(1) {
     /* Clear All */
     for	( int j = 0 ; j < NR_LED ; j ++ )	
           np_set_pixel_rgbw(&px, j , 0, 0, 0, 0);
 
+    for (r=0;r<RINGS;r++) {
+      int p;
+
+      rng = &rings[r];
+      //p = (rng->pos % 60) * rng->size / 60;
+      p = divround((rng->seq % rng->speed) * rng->size , rng->speed);
+      hue_to_rgb(r*256/RINGS, &ro, &go, &bo);
+      np_set_pixel_rgbw(&px, rng->start + p , ro, go, bo, 0);
+      rng->seq++;
+    }
+
+    int j = esp_random() %NR_LED;
+    np_set_pixel_rgbw(&px, j , 255, 255, 255, 0);
     /* Handle each ring separately! */
     np_show(&px, NEOPIXEL_RMT_CHANNEL);
     usleep(2000*10);
