@@ -22,6 +22,7 @@ float hypercos(float i){
 }
 
 int mode =0;
+unsigned short sparkle=128;
 int divround(const int n, const int d)
 {
   return ((n < 0) ^ (d < 0)) ? ((n - d/2)/d) : ((n + d/2)/d);
@@ -54,16 +55,17 @@ short ringsize[RINGS]= {
   (4*8),(4*6),16,12,8,1
 };
 
-typedef struct ring {
+typedef struct ring_s {
   unsigned short start;
   unsigned short end;
   unsigned short size;
   unsigned long seq;
   unsigned short pos;
+  unsigned short mode;
   unsigned short speed;
-} ring;
+} ring_t;
 
-ring  rings[RINGS];
+ring_t  rings[RINGS];
 
 static	void test_neopixel(void *parameters)
 {
@@ -72,7 +74,7 @@ static	void test_neopixel(void *parameters)
 	uint32_t		pixels[NR_LED];
 	int		i,r;
 	int		rc;
-  ring *rng;
+  ring_t *rng;
 
 	rc = neopixel_init(NEOPIXEL_PORT, NEOPIXEL_RMT_CHANNEL);
 	ESP_LOGE("main", "neopixel_init rc = %d", rc);
@@ -85,7 +87,7 @@ static	void test_neopixel(void *parameters)
   /* Initialize ring info */
   rc=0;
   for (i=0;i<RINGS;i++) {
-    memset(&rings[i],0,sizeof(ring));
+    memset(&rings[i],0,sizeof(ring_t));
     rings[i].start=rc;
     rings[i].size=ringsize[i];
     rings[i].end=rc+ringsize[i]-1;
@@ -177,19 +179,81 @@ static	void test_neopixel(void *parameters)
       rng->seq++;
     }
 
-    int j = esp_random() %NR_LED;
-    np_set_pixel_rgbw(&px, j , 255, 255, 255, 0);
+    if (sparkle) {
+      int j = esp_random() %NR_LED;
+      np_set_pixel_rgbw(&px, j , sparkle, sparkle, sparkle, 0);
+    }
     /* Handle each ring separately! */
     np_show(&px, NEOPIXEL_RMT_CHANNEL);
     usleep(1000*10);
   }
 }
 
+static int do_set_cmd(int argc, char **argv) {
+  if (argc < 2)
+    return 0;
+  if (!strcmp("sparkle",argv[1]))
+    printf("Sparkle was %d (0x%x)\n",sparkle,sparkle);
+
+  if (argc < 3)
+    return 0;
+
+  if (!strcmp("sparkle",argv[1]))
+    sparkle = strtoul(argv[2],0L,0);
+
+  if (!strcmp("sparkle",argv[1]))
+    printf("Sparkle is %d (0x%x)\n",sparkle,sparkle);
+  
+  return 0;
+}
 static int do_showring_cmd(int argc, char **argv) {
+  int r;
+  char *str1, *token, *subtoken, *subtoken2;
+  char *saveptr1, *saveptr2;
+  int j,i;
+
   printf("SHOWRINGS %d args\n",argc);
-  int i=0;
+  ring_t *rng;
   for (i=0;i<argc;i++)
     printf("  %d - %s\n",i,argv[i]);
+  if (argc < 2)
+    return 1;
+
+   for (j = 1, str1 = argv[1]; ; j++, str1 = NULL) {
+       token = strtok_r(str1, ",", &saveptr1);
+       if (token == NULL)
+           break;
+
+        subtoken = strtok_r(token, "-", &saveptr2);
+        if (subtoken) {
+                subtoken2 = strtok_r(NULL, "-", &saveptr2);
+                if (!subtoken2) subtoken2=subtoken;
+                for (r=strtoul(subtoken,0L,0);r<=strtoul(subtoken2,0L,0) && r < RINGS;r++)
+								{
+                        printf("PROCESSS %d\n",r);
+												rng = &rings[r];
+												printf("Ring %d\n",r);
+												printf(" was Speed %d Pos %d Mode %d seq %lu\n",
+													rng->speed,rng->pos,rng->mode,rng->seq);
+												for (i=2;i<argc;i+=2) {
+													if (!strcmp("speed",argv[i]))
+														rng->speed=strtoul(argv[i+1],0L,0);  
+													else if (!strcmp("mode",argv[i]))
+														rng->mode=strtoul(argv[i+1],0L,0);  
+													else if (!strcmp("pos",argv[i]))
+														rng->pos=strtoul(argv[i+1],0L,0);  
+													else if (!strcmp("seq",argv[i]))
+														rng->seq=strtoul(argv[i+1],0L,0);  
+												printf(" now Speed %d Pos %d Mode %d seq %lu\n",
+													rng->speed,rng->pos,rng->mode,rng->seq);
+												}
+								}
+       }
+   }
+
+
+
+
   return 0;
 }
 
@@ -201,14 +265,22 @@ static void initialize_console(void)
     esp_console_dev_uart_config_t uart_config = ESP_CONSOLE_DEV_UART_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_console_new_repl_uart(&uart_config, &repl_config, &repl));
     ESP_ERROR_CHECK(esp_console_start_repl(repl));
-    const esp_console_cmd_t i2cdump_cmd = {
-        .command = "showring",
+    const esp_console_cmd_t ring_cmd = {
+        .command = "ring",
         .help = "SHow Ring Parameters",
         .hint = NULL,
         .func = &do_showring_cmd,
         .argtable = 0L
     };
-    ESP_ERROR_CHECK(esp_console_cmd_register(&i2cdump_cmd));
+    ESP_ERROR_CHECK(esp_console_cmd_register(&ring_cmd));
+    const esp_console_cmd_t set_cmd = {
+        .command = "set",
+        .help = "Set Parameters",
+        .hint = NULL,
+        .func = &do_set_cmd,
+        .argtable = 0L
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&set_cmd));
 }
 
 static	void console(void *parameters) {
