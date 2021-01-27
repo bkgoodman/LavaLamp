@@ -17,6 +17,7 @@
 
 //#define	NEOPIXEL_SK6812
 #define	NEOPIXEL_RMT_CHANNEL		RMT_CHANNEL_2
+#define M_PI acos(-1.0)
 float hypercos(float i){
         return  (cos(i)+1)/2;
 }
@@ -177,6 +178,7 @@ static	void test_neopixel(void *parameters)
       int p,a;
 
       rng = &rings[r];
+#if 0
       //p = (rng->pos % 60) * rng->size / 60;
 			for (a=0;a<=rng->angle;a++) {
 				int seq = rng->seq;
@@ -184,6 +186,11 @@ static	void test_neopixel(void *parameters)
 				p += divround(rng->size*a,rng->angle+1);
 				p = p % rng->size;
 				np_set_pixel_rgbw(&px, rng->start + p , rng->red,rng->green,rng->blue,0);
+			}
+#endif
+			for (a=0;a<rng->size;a++) {
+				float scale = hypercos(
+				np_set_pixel_rgbw(&px, rng->start + p , rng->red*scale,rng->green*scale,rng->blue*scale,0);
 			}
       rng->seq++;
     }
