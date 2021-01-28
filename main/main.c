@@ -17,7 +17,10 @@
 
 //#define	NEOPIXEL_SK6812
 #define	NEOPIXEL_RMT_CHANNEL		RMT_CHANNEL_2
+
+#ifndef M_PI
 #define M_PI acos(-1.0)
+#endif
 float hypercos(float i){
         return  (cos(i)+1)/2;
 }
