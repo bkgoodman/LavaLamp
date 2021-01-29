@@ -31,6 +31,7 @@ inline float softring(float pos) {
 }
 
 
+unsigned int globalDelay=10000;
 int mode =0;
 unsigned short sparkle=128;
 int divround(const int n, const int d)
@@ -69,10 +70,10 @@ typedef struct ring_s {
   unsigned short start;
   unsigned short end;
   unsigned short size;
-  unsigned long seq;
+  double seq;
   unsigned short pos;
   unsigned short mode;
-  unsigned short speed;
+  double speed;
   unsigned short angle;
   unsigned short width;
   unsigned short len;
@@ -94,7 +95,7 @@ int getPixel(int p,int pos,int width, int len,int pixels,int angles) {
 
       float v =0;
         /* Pixel to Sequence */
-      float seq = ((float)p*(float)SEQSIZE) / (float) pixels;
+      double seq = ((double)p*(double)SEQSIZE) / (double) pixels;
         seq -= pos;
 
         /* Compensate for angle */
@@ -175,11 +176,11 @@ static	void test_neopixel(void *parameters)
     hue_to_rgb(i*256/RINGS, &rings[i].red, &rings[i].green, &rings[i].blue);
   }
 
-  rings[0].speed=60;
-  rings[1].speed=55;
-  rings[2].speed=70;
-  rings[3].speed=63;
-  rings[4].speed=54;
+  rings[0].speed=1;
+  rings[1].speed=1;
+  rings[2].speed=1;
+  rings[3].speed=1;
+  rings[4].speed=1;
   rings[5].speed=1;
 	px.pixels = (uint8_t *)pixels;
 	px.pixel_count = NR_LED;
@@ -255,15 +256,6 @@ static	void test_neopixel(void *parameters)
       rng = &rings[r];
 
 	if (rng->mode == 0) {
-			for (a=0;a<=rng->angle;a++) {
-				int seq = rng->seq;
-				p = divround((seq % rng->speed) * rng->size , rng->speed);
-				p += divround(rng->size*a,rng->angle+1);
-				p = p % rng->size;
-				np_set_pixel_rgbw(&px, rng->start + p , rng->red,rng->green,rng->blue,0);
-			}
-	}
-	if (rng->mode == 1) {
 		int p;
 		for(p=0;p<rng->size;p++) {
 			int v;
@@ -273,13 +265,7 @@ static	void test_neopixel(void *parameters)
 		}
 	}
 
-#if 0
-			for (a=0;a<rng->size;a++) {
-				float scale = hypercos(
-				np_set_pixel_rgbw(&px, rng->start + p , rng->red*scale,rng->green*scale,rng->blue*scale,0);
-			}
-#endif
-      rng->seq++;
+      rng->seq+=rng->speed;
     }
 
     if (sparkle) {
@@ -288,24 +274,22 @@ static	void test_neopixel(void *parameters)
     }
     /* Handle each ring separately! */
     np_show(&px, NEOPIXEL_RMT_CHANNEL);
-    usleep(1000*10);
+    usleep(globalDelay);
   }
 }
 
 static int do_set_cmd(int argc, char **argv) {
   if (argc < 2)
     return 0;
-  if (!strcmp("sparkle",argv[1]))
-    printf("Sparkle was %d (0x%x)\n",sparkle,sparkle);
-
-  if (argc < 3)
-    return 0;
 
   if (!strcmp("sparkle",argv[1]))
     sparkle = strtoul(argv[2],0L,0);
 
-  if (!strcmp("sparkle",argv[1]))
-    printf("Sparkle is %d (0x%x)\n",sparkle,sparkle);
+  if (!strcmp("delay",argv[1]))
+    globalDelay = strtoul(argv[2],0L,0);
+
+  printf("Sparkle is %d (0x%x)\n",sparkle,sparkle);
+  printf("Delay is %d (0x%x)\n",globalDelay,globalDelay);
   
   return 0;
 }
@@ -335,18 +319,18 @@ static int do_showring_cmd(int argc, char **argv) {
 								{
 												rng = &rings[r];
 												printf("Ring %d\n",r);
-												printf(" Was Speed %d Pos %d Mode %d seq %lu \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
+												printf(" Was Speed %f Pos %d Mode %d seq %f \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
 													rng->speed,rng->pos,rng->mode,rng->seq,rng->red,rng->green,rng->blue,
 													rng->angle,rng->width,rng->len);
 												for (i=2;i<argc;i+=2) {
 													if (!strcmp("speed",argv[i]))
-														rng->speed=strtoul(argv[i+1],0L,0);  
+														rng->speed=strtof(argv[i+1],0L);  
 													else if (!strcmp("mode",argv[i]))
 														rng->mode=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("pos",argv[i]))
 														rng->pos=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("seq",argv[i]))
-														rng->seq=strtoul(argv[i+1],0L,0);  
+														rng->seq=strtof(argv[i+1],0L);  
 													else if (!strcmp("angle",argv[i]))
 														rng->angle=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("width",argv[i]))
@@ -362,7 +346,7 @@ static int do_showring_cmd(int argc, char **argv) {
 													else if (!strcmp("hue",argv[i])) {
 														hue_to_rgb(strtoul(argv[i+1],0L,0), &rng->red, &rng->green, &rng->blue);
 													}
-												printf(" Now Speed %d Pos %d Mode %d seq %lu \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
+												printf(" Now Speed %f Pos %d Mode %d seq %f \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
 													rng->speed,rng->pos,rng->mode,rng->seq,rng->red,rng->green,rng->blue,
 													rng->angle,rng->width,rng->len);
 												}
@@ -407,7 +391,7 @@ static	void console(void *parameters) {
     initialize_console();
     printf("Console init done\n");
     while(1) {
-      vTaskDelay(100*1000);
+      vTaskDelay(1000*1000);
     }
 }
 
