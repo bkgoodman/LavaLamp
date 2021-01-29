@@ -24,6 +24,12 @@
 float hypercos(float i){
         return  (cos(i)+1)/2;
 }
+inline float softring(float pos) {
+  return (cos(
+      (float)pos
+  )/2)+0.5f;
+}
+
 
 int mode =0;
 unsigned short sparkle=128;
@@ -69,12 +75,75 @@ typedef struct ring_s {
   unsigned short speed;
   unsigned short angle;
   unsigned short width;
+  unsigned short len;
 	unsigned char red;
 	unsigned char green;
 	unsigned char blue;
 } ring_t;
 
 ring_t  rings[RINGS];
+
+#define SEQSIZE 100
+int getPixel(int p,int pos,int width, int len,int pixels,int angles) {
+        float r;
+      int a;
+    int result=0;
+
+
+    for (a=0;a<angles;a++) {
+
+      float v =0;
+        /* Pixel to Sequence */
+      float seq = ((float)p*(float)SEQSIZE) / (float) pixels;
+        seq -= pos;
+
+        /* Compensate for angle */
+        seq += ((float) a*(float) SEQSIZE)/(float) angles;
+
+        while (seq < (-SEQSIZE/2))
+          seq += SEQSIZE;
+        while (seq > (SEQSIZE/2))
+          seq -= SEQSIZE;
+
+
+        /* Normalize sequence number??? */
+
+        /* Offset for current position */
+        /* Scale to width Radians */
+        if ((seq) > (width+len)) {
+                r=M_PI;
+                v=0;
+                //ph=0;
+        }
+        else if ((seq) > (len)) {
+                r = M_PI*(seq-len) / (float) width;
+                v = softring(r);
+                //ph=1;
+        }
+        else if ((seq) > 0) {
+                r = 0;
+                v=1;
+                //ph=2;
+        }
+        else if ((seq) > (-len)) {
+                r = 0;
+                v=1;
+                //ph=3;
+        }
+        else if ((seq) > (-len-width)) {
+                r = M_PI*(-len-seq) / (float) width;
+                v = softring(r);
+                //ph=4;
+        }
+        else {
+                r=-M_PI;
+                v=0;
+                //ph=5;
+        }
+      result += 255*v;
+  }
+  return (result > 255)? 255: result;
+}
 
 static	void test_neopixel(void *parameters)
 {
@@ -99,6 +168,9 @@ static	void test_neopixel(void *parameters)
     rings[i].start=rc;
     rings[i].size=ringsize[i];
     rings[i].end=rc+ringsize[i]-1;
+    rings[i].width=5;
+    rings[i].len=5;
+    rings[i].angle=1;
     rc += ringsize[i];
     hue_to_rgb(i*256/RINGS, &rings[i].red, &rings[i].green, &rings[i].blue);
   }
@@ -181,8 +253,8 @@ static	void test_neopixel(void *parameters)
       int p,a;
 
       rng = &rings[r];
-#if 0
-      //p = (rng->pos % 60) * rng->size / 60;
+
+	if (rng->mode == 0) {
 			for (a=0;a<=rng->angle;a++) {
 				int seq = rng->seq;
 				p = divround((seq % rng->speed) * rng->size , rng->speed);
@@ -190,11 +262,23 @@ static	void test_neopixel(void *parameters)
 				p = p % rng->size;
 				np_set_pixel_rgbw(&px, rng->start + p , rng->red,rng->green,rng->blue,0);
 			}
-#endif
+	}
+	if (rng->mode == 1) {
+		int p;
+		for(p=0;p<rng->size;p++) {
+			int v;
+			v = getPixel(p,rng->seq,rng->width,rng->len,rng->size,rng->angle);
+			np_set_pixel_rgbw(&px, rng->start + p , (v*rng->red)>>8,(v*rng->green)>>8,(v*rng->blue)>>8,0);
+			
+		}
+	}
+
+#if 0
 			for (a=0;a<rng->size;a++) {
 				float scale = hypercos(
 				np_set_pixel_rgbw(&px, rng->start + p , rng->red*scale,rng->green*scale,rng->blue*scale,0);
 			}
+#endif
       rng->seq++;
     }
 
@@ -251,9 +335,9 @@ static int do_showring_cmd(int argc, char **argv) {
 								{
 												rng = &rings[r];
 												printf("Ring %d\n",r);
-												printf(" Was Speed %d Pos %d Mode %d seq %lu color %2.2x:%2.2x:%2.2x Ang %d Width %d\n",
+												printf(" Was Speed %d Pos %d Mode %d seq %lu \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
 													rng->speed,rng->pos,rng->mode,rng->seq,rng->red,rng->green,rng->blue,
-													rng->angle,rng->width);
+													rng->angle,rng->width,rng->len);
 												for (i=2;i<argc;i+=2) {
 													if (!strcmp("speed",argv[i]))
 														rng->speed=strtoul(argv[i+1],0L,0);  
@@ -267,6 +351,8 @@ static int do_showring_cmd(int argc, char **argv) {
 														rng->angle=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("width",argv[i]))
 														rng->width=strtoul(argv[i+1],0L,0);  
+													else if (!strcmp("len",argv[i]))
+														rng->len=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("rgb",argv[i])) {
 														unsigned long cc = strtoul(argv[i+1],0L,16);
 														rng->red = (cc >> 16);
@@ -276,9 +362,9 @@ static int do_showring_cmd(int argc, char **argv) {
 													else if (!strcmp("hue",argv[i])) {
 														hue_to_rgb(strtoul(argv[i+1],0L,0), &rng->red, &rng->green, &rng->blue);
 													}
-												printf(" Now Speed %d Pos %d Mode %d seq %lu color %2.2x:%2.2x:%2.2x Ang %d Width %d\n",
+												printf(" Now Speed %d Pos %d Mode %d seq %lu \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
 													rng->speed,rng->pos,rng->mode,rng->seq,rng->red,rng->green,rng->blue,
-													rng->angle,rng->width);
+													rng->angle,rng->width,rng->len);
 												}
 								}
        }
