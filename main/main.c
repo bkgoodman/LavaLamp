@@ -89,13 +89,15 @@ int getPixel(int p,int pos,int width, int len,int pixels,int angles) {
         float r;
       int a;
     int result=0;
+    short ph; // DEBUG ONLY
 
+    float scaledpos = ((float)p*(float)SEQSIZE) / (float) pixels;
 
     for (a=0;a<angles;a++) {
 
       float v =0;
         /* Pixel to Sequence */
-      double seq = ((double)p*(double)SEQSIZE) / (double) pixels;
+      float seq = scaledpos;
         seq -= pos;
 
         /* Compensate for angle */
@@ -114,33 +116,33 @@ int getPixel(int p,int pos,int width, int len,int pixels,int angles) {
         if ((seq) > (width+len)) {
                 r=M_PI;
                 v=0;
-                //ph=0;
+                ph=0;
         }
-        else if ((seq) > (len)) {
+        else if (seq < (-width-len)) {
+                r=-M_PI;
+                v=0;
+                ph=5;
+        }
+        else if ((-len < seq) && (seq <= len))  {
+                r = 0;
+                v=1;
+                ph=2;
+        } else if ((seq) > (len)) {
                 r = M_PI*(seq-len) / (float) width;
                 v = softring(r);
-                //ph=1;
-        }
-        else if ((seq) > 0) {
-                r = 0;
-                v=1;
-                //ph=2;
-        }
-        else if ((seq) > (-len)) {
-                r = 0;
-                v=1;
-                //ph=3;
+                ph=1;
         }
         else if ((seq) > (-len-width)) {
                 r = M_PI*(-len-seq) / (float) width;
                 v = softring(r);
-                //ph=4;
+                ph=4;
         }
         else {
                 r=-M_PI;
                 v=0;
-                //ph=5;
+                ph=5;
         }
+      //printf("%d %f %f %f %d\n",p,seq,r,v,ph);
       result += 255*v;
   }
   return (result > 255)? 255: result;
