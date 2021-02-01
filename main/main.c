@@ -34,6 +34,10 @@ inline float softring(float pos) {
 unsigned int globalDelay=10000;
 int mode =0;
 unsigned short sparkle=128;
+unsigned char flicker_r=0;
+unsigned char flicker_g=0;
+unsigned char flicker_b=0;
+unsigned short numflicker=0;
 int divround(const int n, const int d)
 {
   return ((n < 0) ^ (d < 0)) ? ((n - d/2)/d) : ((n + d/2)/d);
@@ -48,11 +52,11 @@ static void IRAM_ATTR gpio_isr_handler(void* arg) {
 void hue_to_rgb(int hue, unsigned char *ro, unsigned char *go, unsigned char *bo) {
         float r,g,b;
         float max;
-        float pi = 3.14159;
-        float third = ((float) 2.0f)*pi/3.0f;
-        r = hypercos(hue);
-        g = hypercos(hue+third);
-        b = hypercos(hue+third+third);
+        float third = (2*M_PI)/3.0f;
+	float h = ((float)hue)*2*M_PI/255.0f;
+        r = hypercos(h);
+        g = hypercos(h+third);
+        b = hypercos(h+third+third);
         max = r;
         if (g>max) max=g;
         if (b>max) max=b;
@@ -80,6 +84,8 @@ typedef struct ring_s {
 	unsigned char red;
 	unsigned char green;
 	unsigned char blue;
+	unsigned long huespeed;
+	unsigned long hue;			// We use top byte only
 } ring_t;
 
 ring_t  rings[RINGS];
@@ -175,7 +181,7 @@ static	void test_neopixel(void *parameters)
     rings[i].len=5;
     rings[i].angle=1;
     rc += ringsize[i];
-    hue_to_rgb(i*256/RINGS, &rings[i].red, &rings[i].green, &rings[i].blue);
+    hue_to_rgb((i*255)/RINGS, &rings[i].red, &rings[i].green, &rings[i].blue);
   }
 
   rings[0].speed=1;
@@ -253,8 +259,6 @@ static	void test_neopixel(void *parameters)
           np_set_pixel_rgbw(&px, j , 0, 0, 0, 0);
 
     for (r=0;r<RINGS;r++) {
-      int p,a;
-
       rng = &rings[r];
 
 	if (rng->mode == 0) {
@@ -266,13 +270,38 @@ static	void test_neopixel(void *parameters)
 			
 		}
 	}
+	/* Flame Flicker */
+	if (rng->mode == 1) {
+		int p;
+		for(p=0;p<rng->size;p++) {
+			short r = 0xff;
+			short g = (esp_random() & 0xff);
+			short scale = (esp_random() & 0x3);
+			r = r>>scale;
+			g = r>>scale;
+			np_set_pixel_rgbw(&px, rng->start + p , r,g,0,0);
+			
+		}
+	}
 
       rng->seq+=rng->speed;
+	while (rng->seq > SEQSIZE)
+		rng->seq -= SEQSIZE;
+	if (rng->huespeed) {
+		rng->hue += rng->huespeed;
+		hue_to_rgb(rng->hue >> 24,&rng->red,&rng->green,&rng->blue);
+	}
     }
 
     if (sparkle) {
       int j = esp_random() %NR_LED;
       np_set_pixel_rgbw(&px, j , sparkle, sparkle, sparkle, 0);
+    }
+    if (numflicker) {
+	for (i=0;i<numflicker;i++){
+	      int j = esp_random() %NR_LED;
+	      np_set_pixel_rgbw(&px, j , flicker_r,flicker_g,flicker_b,0);
+	}
     }
     /* Handle each ring separately! */
     np_show(&px, NEOPIXEL_RMT_CHANNEL);
@@ -286,12 +315,23 @@ static int do_set_cmd(int argc, char **argv) {
 
   if (!strcmp("sparkle",argv[1]))
     sparkle = strtoul(argv[2],0L,0);
+  if (!strcmp("flicker",argv[1])) {
+	unsigned long rgb;
+    rgb = strtoul(argv[2],0L,0);
+	flicker_r=rgb>>16;
+	flicker_g=(rgb>>8)&0xff;
+	flicker_b=(rgb)&0xff;
+}
+  if (!strcmp("numflicker",argv[1]))
+    numflicker = strtoul(argv[2],0L,0);
 
   if (!strcmp("delay",argv[1]))
     globalDelay = strtoul(argv[2],0L,0);
 
   printf("Sparkle is %d (0x%x)\n",sparkle,sparkle);
   printf("Delay is %d (0x%x)\n",globalDelay,globalDelay);
+  printf("flicker is %x %x %x\n",flicker_r,flicker_g,flicker_b);
+  printf("numflicker is %d (0x%x)\n",numflicker,numflicker);
   
   return 0;
 }
@@ -321,9 +361,9 @@ static int do_showring_cmd(int argc, char **argv) {
 								{
 												rng = &rings[r];
 												printf("Ring %d\n",r);
-												printf(" Was Speed %f Pos %d Mode %d seq %f \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
+												printf(" Was Speed %f Pos %d Mode %d seq %f \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d huespeed %lu\n",
 													rng->speed,rng->pos,rng->mode,rng->seq,rng->red,rng->green,rng->blue,
-													rng->angle,rng->width,rng->len);
+													rng->angle,rng->width,rng->len,rng->huespeed);
 												for (i=2;i<argc;i+=2) {
 													if (!strcmp("speed",argv[i]))
 														rng->speed=strtof(argv[i+1],0L);  
@@ -337,6 +377,8 @@ static int do_showring_cmd(int argc, char **argv) {
 														rng->angle=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("width",argv[i]))
 														rng->width=strtoul(argv[i+1],0L,0);  
+													else if (!strcmp("huespeed",argv[i]))
+														rng->huespeed=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("len",argv[i]))
 														rng->len=strtoul(argv[i+1],0L,0);  
 													else if (!strcmp("rgb",argv[i])) {
@@ -348,9 +390,9 @@ static int do_showring_cmd(int argc, char **argv) {
 													else if (!strcmp("hue",argv[i])) {
 														hue_to_rgb(strtoul(argv[i+1],0L,0), &rng->red, &rng->green, &rng->blue);
 													}
-												printf(" Now Speed %f Pos %d Mode %d seq %f \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d\n",
+												printf(" Now Speed %f Pos %d Mode %d seq %f \n  color %2.2x:%2.2x:%2.2x Ang %d Width %d Len %d huespeed %lu\n",
 													rng->speed,rng->pos,rng->mode,rng->seq,rng->red,rng->green,rng->blue,
-													rng->angle,rng->width,rng->len);
+													rng->angle,rng->width,rng->len,rng->huespeed);
 												}
 								}
        }
