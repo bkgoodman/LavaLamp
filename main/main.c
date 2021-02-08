@@ -287,6 +287,8 @@ static	void test_neopixel(void *parameters)
       rng->seq+=rng->speed;
 	while (rng->seq > SEQSIZE)
 		rng->seq -= SEQSIZE;
+	while (rng->seq < -SEQSIZE)
+		rng->seq += SEQSIZE;
 	if (rng->huespeed) {
 		rng->hue += rng->huespeed;
 		hue_to_rgb(rng->hue >> 24,&rng->red,&rng->green,&rng->blue);
