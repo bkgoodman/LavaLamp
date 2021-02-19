@@ -1,0 +1,72 @@
+<html>
+  <head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>
+      Plasma Lamp
+    </title>
+  </head>
+  <body>
+<script type="text/javascript">
+
+function changed(d){
+	//alert(d.id);
+	var x = document.getElementById(d.id+"_change");
+	if (x)
+		x.checked=true;
+}
+</script>
+	  <form method="POST">
+	  <h3>Global</h3>
+	    <div>
+	      <input name="sparkle_change" type="checkbox" id="sparkle_change"></input>
+	      sparkle
+	      <input name="sparkle" type="range" min="0" max="80" value="0" class="slider" onChange="changed(this);" id="sparkle">
+	    </div>
+	<h3>Change Rings</h3>
+		0
+	      <input name="ring0" type="checkbox" id="ring0"></input>
+	      <input name="ring1" type="checkbox" id="ring1"></input>
+	      <input name="ring2" type="checkbox" id="ring2"></input>
+	      <input name="ring3" type="checkbox" id="ring3"></input>
+	      <input name="ring4" type="checkbox" id="ring4"></input>
+	      <input name="ring5" type="checkbox" id="ring5"></input>
+		5
+	<h3>Ring Settings</h3>
+	      <div>
+	      <input name="ring_color_change" type="checkbox" id="ring_color_change"></input>
+	      Ring Color
+	      <input name="ring_color" type="color" onChange="changed(this);" id="ring_color" value="#ff0000"></input>
+	    </div>
+	    <div>
+	      <input name="ring_speed_change" type="checkbox" id="ring_speed_change"></input>
+	      Ring Speed
+	      <input name="ring_speed" type="range" min="-10" max="10" value="0" class="slider" onChange="changed(this);" id="ring_speed">
+	    </div>
+	    <div>
+	      <input name="ring_width_change" type="checkbox" id="ring_width_change"></input>
+	      Width
+	      <input name="ring_width" type="range" min="0" max="15" value="0" class="slider" onChange="changed(this);" id="ring_width">
+	    </div>
+	    <div>
+	      <input name="ring_length_change" type="checkbox" id="ring_length_change"></input>
+	      Length
+	      <input name="ring_length" type="range" min="0" max="15" value="0" class="slider" onChange="changed(this);" id="ring_length">
+	    </div>
+	    <div>
+	      <input name="ring_huespeed_change" type="checkbox" id="ring_huespeed_change"></input>
+	      Huespeed
+	      <input name="ring_huespeed" type="range" min="0" max="65536" value="0" class="slider" onChange="changed(this);" id="ring_huespeed">
+	    </div>
+	    <div>
+	      <input type="checkbox" id="ring_mode_change" name="ring_mode_change"></input>
+	      Mode
+	      <select onChange="changed(this);" name="ring_mode" id="ring_mode">
+		<option value="0">Normal</option>
+		<option value="1">Fire</option>
+		</select>
+	    </div>
+		<input type="submit" value="Set" name="Set" />
+	  </form>
+  </body>
+</html>
+
