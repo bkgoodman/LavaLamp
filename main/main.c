@@ -617,31 +617,65 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
         }
         printf("REGRESS DONE\n\n");
 
+        if (find_regress("sparkle_change",buf)) {
+            char *s;
+          s=find_regress("sparkle",buf);
+          printf("sparkle now %s\n",s);
+          sparkle = strtoul(s,0L,0);
+        }
         for (i=0;i<RINGS;i++) {
+            char *s;
             char rr[16];
             sprintf(rr,"ring%d",i);
             if (find_regress(rr,buf)) {
               printf("Set ring %d\n",i);
+                if (find_regress("ring_huespeed_change",buf)) {
+                  s=find_regress("ring_huespeed",buf);
+                  rings[i].huespeed = strtoul(s,0L,0)<<8;
+                  printf("huespeed %d now %lx\n",i,rings[i].huespeed);
+                }
+                if (find_regress("ring_color_change",buf)) {
+                  unsigned long rgb;
+                  s=find_regress("ring_color",buf);
+                  rgb = strtoul(&s[3],0L,16);
+                  rings[i].red = rgb >> 16;
+                  rings[i].green = (rgb >> 8) & 0xff;
+                  rings[i].blue = rgb & 0xff;
+                  printf("color %d now %s %lx\n",i,&s[3],rgb);
+                }
+                if (find_regress("ring_width_change",buf)) {
+                  s=find_regress("ring_width",buf);
+                  rings[i].width = strtoul(s,0L,0);
+                  printf("width %d now %s\n",i,s);
+                }
+                if (find_regress("ring_length_change",buf)) {
+                  s=find_regress("ring_length",buf);
+                  rings[i].len = strtoul(s,0L,0);
+                  printf("length %d now %s\n",i,s);
+                }
+                if (find_regress("ring_mode_change",buf)) {
+                  s=find_regress("ring_mode",buf);
+                  rings[i].mode = strtoul(s,0L,0);
+                  printf("mode %d now %s\n",i,s);
+                }
+                if (find_regress("ring_speed_change",buf)) {
+                  float f;
+                  s=find_regress("ring_speed",buf);
+                  f= strtof(s,0L);
+                  rings[i].speed= f;
+                  printf("speed %d now %f\n",i,f);
+                }
+                if (find_regress("ring_angle_change",buf)) {
+                  s=find_regress("ring_angle",buf);
+                  rings[i].angle= strtoul(s,0L,0);
+                  printf("angle %d now %s\n",i,s);
+                }
             }
         }
 
-        if (find_regress("ring_huespeed_change",buf)) {
-          printf("huespeed now %s\n",find_regress("ring_huespeed",buf));
-        }
-        if (find_regress("ring_color_change",buf)) {
-          printf("color now %s\n",find_regress("ring_color",buf));
-        }
-        if (find_regress("ring_width_change",buf)) {
-          printf("width now %s\n",find_regress("ring_width",buf));
-        }
-        if (find_regress("ring_length_change",buf)) {
-          printf("length now %s\n",find_regress("ring_length",buf));
-        }
-        if (find_regress("ring_mode_change",buf)) {
-          printf("mode now %s\n",find_regress("ring_modelengthwidth",buf));
-        }
     }
 	ESP_LOGI(TAG,"Index post");
+          free(buf);
 	return (index_get_handler(req));
 }
 
