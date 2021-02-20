@@ -13,6 +13,9 @@ function changed(d){
 	var x = document.getElementById(d.id+"_change");
 	if (x)
 		x.checked=true;
+	var x = document.getElementById(d.id+"_display");
+	if (x)
+		x.innerHTML=d.value;
 }
 </script>
 	  <form method="POST">
@@ -21,6 +24,18 @@ function changed(d){
 	      <input name="sparkle_change" type="checkbox" id="sparkle_change"></input>
 	      sparkle
 	      <input name="sparkle" type="range" min="0" max="80" value="0" class="slider" onChange="changed(this);" id="sparkle">
+		<span id="sparkle_display"></span>
+	    </div>
+	    <div>
+	      <input name="flicker_change" type="checkbox" id="flicker_change"></input>
+	      Flicker
+	      <input name="flicker" type="color" onChange="changed(this);" id="flicker">
+	    </div>
+	    <div>
+	      <input name="numflicker_change" type="checkbox" id="numflicker_change"></input>
+	      Flicker #
+	      <input name="numflicker" type="range" min="0" max="80" value="0" class="slider" onChange="changed(this);" id="numflicker">
+		<span id="numflicker_display"></span>
 	    </div>
 	<h3>Change Rings</h3>
 		0
@@ -41,26 +56,31 @@ function changed(d){
 	      <input name="ring_speed_change" type="checkbox" id="ring_speed_change"></input>
 	      Speed
 	      <input name="ring_speed" type="range" min="-10" max="10" step=0.1 value="0" class="slider" onChange="changed(this);" id="ring_speed">
+		<span id="ring_speed_display"></span>
 	    </div>
 	    <div>
 	      <input name="ring_angle_change" type="checkbox" id="ring_angle_change"></input>
 	      Angle
 	      <input name="ring_angle" type="range" min="1" max="5" value="0" class="slider" onChange="changed(this);" id="ring_angle">
+		<span id="ring_angle_display"></span>
 	    </div>
 	    <div>
 	      <input name="ring_width_change" type="checkbox" id="ring_width_change"></input>
 	      Width
 	      <input name="ring_width" type="range" min="0" max="15" value="0" class="slider" onChange="changed(this);" id="ring_width">
+		<span id="ring_width_display"></span>
 	    </div>
 	    <div>
 	      <input name="ring_length_change" type="checkbox" id="ring_length_change"></input>
 	      Length
 	      <input name="ring_length" type="range" min="0" max="15" value="0" class="slider" onChange="changed(this);" id="ring_length">
+		<span id="ring_length_display"></span>
 	    </div>
 	    <div>
 	      <input name="ring_huespeed_change" type="checkbox" id="ring_huespeed_change"></input>
 	      Huespeed
 	      <input name="ring_huespeed" type="range" min="0" max="65536" value="0" class="slider" onChange="changed(this);" id="ring_huespeed">
+		<span id="ring_huespeed_display"></span>
 	    </div>
 	    <div>
 	      <input type="checkbox" id="ring_mode_change" name="ring_mode_change"></input>

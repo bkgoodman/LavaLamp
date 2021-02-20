@@ -623,6 +623,22 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
           printf("sparkle now %s\n",s);
           sparkle = strtoul(s,0L,0);
         }
+        if (find_regress("numflicker_change",buf)) {
+            char *s;
+          s=find_regress("numflicker",buf);
+          printf("numflicker now %s\n",s);
+          numflicker = strtoul(s,0L,0);
+        }
+        if (find_regress("flicker_change",buf)) {
+            char *s;
+          unsigned long rgb;
+          s=find_regress("flicker",buf);
+          rgb = strtoul(&s[3],0L,16);
+          flicker_r = rgb >> 16;
+          flicker_g = (rgb >> 8) & 0xff;
+          flicker_b = rgb & 0xff;
+          printf("flicker now %s %lx\n",&s[3],rgb);
+        }
         for (i=0;i<RINGS;i++) {
             char *s;
             char rr[16];
