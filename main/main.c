@@ -15,6 +15,7 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_eth.h"
+#include "freertos/task.h"
 #include "protocol_examples_common.h"
 
 #include <esp_http_server.h>
@@ -27,6 +28,8 @@
 #define	NEOPIXEL_WS2812
 #include "esp_log.h"
 #include "esp_console.h"
+
+#define STORAGE_NAMESPACE "PlasmaLamp"
 
 //#define	NEOPIXEL_SK6812
 #define	NEOPIXEL_RMT_CHANNEL		RMT_CHANNEL_2
@@ -56,6 +59,7 @@ int divround(const int n, const int d)
   return ((n < 0) ^ (d < 0)) ? ((n - d/2)/d) : ((n + d/2)/d);
 }
 
+void load_preset(int slot);
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
 	//printf("INT should go to xQueue\r\n");
 
@@ -102,6 +106,16 @@ typedef struct ring_s {
 } ring_t;
 
 ring_t  rings[RINGS];
+
+
+typedef struct preset_s {
+  ring_t rings[RINGS];
+  unsigned short sparkle;
+  unsigned short numflicker;
+  unsigned char flicker_r;
+  unsigned char flicker_g;
+  unsigned char flicker_b;
+} preset_t;
 
 #define SEQSIZE 100
 int getPixel(int p,int pos,int width, int len,int pixels,int angles) {
@@ -234,12 +248,15 @@ static	void test_neopixel(void *parameters)
 	px.brightness = 0x80;
 	np_show(&px, NEOPIXEL_RMT_CHANNEL);
 
+  // If we have a preset - use it
+  load_preset(0);
 #if 0
   short pos=0;
   short color=0;
   short posrate=1;
   long seq=0;
   unsigned int hue=0;
+
   while(1) {
     usleep(2000*10);
     if (mode == 0) {
@@ -319,9 +336,26 @@ static	void test_neopixel(void *parameters)
 	}
     }
     /* Handle each ring separately! */
+    //taskENTER_CRITICAL();
+    //vTaskSuspendAll();
     np_show(&px, NEOPIXEL_RMT_CHANNEL);
+    //xTaskResumeAll();
+    //taskEXIT_CRITICAL();
     usleep(globalDelay);
   }
+}
+
+static int do_debug_cmd(int argc, char **argv) {
+    printf( "Task Name\tStatus\tPrio\tHWM\tTask\tAffinity\n");
+    char *stats_buffer = malloc(1024);
+#ifdef USE_TRACE_FACILITY
+    vTaskList(stats_buffer);
+    printf("%s\n", stats_buffer);
+#else
+    printf("Trace facility disabled\n");
+#endif
+    free (stats_buffer);
+    return(0);
 }
 
 static int do_set_cmd(int argc, char **argv) {
@@ -443,6 +477,14 @@ static void initialize_console(void)
         .argtable = 0L
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&set_cmd));
+    const esp_console_cmd_t debug_cmd = {
+        .command = "debug",
+        .help = "debug info",
+        .hint = NULL,
+        .func = &do_debug_cmd,
+        .argtable = 0L
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&debug_cmd));
 }
 
 static	void console(void *parameters) {
@@ -563,6 +605,31 @@ char *find_regress(char *key, char *buf) {
     return 0L;
 }
 
+void load_preset(int slot) {
+    size_t actualSize;
+    esp_err_t err;
+    nvs_handle_t my_handle;
+    char slotname[10];
+    preset_t *p = malloc(sizeof(preset_t));
+    sprintf(slotname,"preset%d",slot);
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
+    ESP_ERROR_CHECK(err);
+    err = nvs_get_blob(my_handle,slotname,0L,&actualSize);
+    if (err || actualSize != sizeof(preset_t)) {
+      ESP_LOGE(TAG,"Error loading preset %d",slot);
+    } else {
+            err = nvs_get_blob(my_handle,slotname,p,&actualSize);
+            memcpy(&rings,&p->rings,sizeof(rings));
+            sparkle = p->sparkle;
+            numflicker = p->numflicker;
+            flicker_r = p->flicker_r;
+            flicker_g = p->flicker_g;
+            flicker_b = p->flicker_b;
+            ESP_LOGI(TAG,"Preset %d loaded",slot);
+    }
+    free(p);
+    nvs_close(my_handle);
+}
 #define MAX_PAYLOAD 512
 static esp_err_t index_post_handler(httpd_req_t *req) {
     char *buf=malloc(MAX_PAYLOAD);
@@ -617,77 +684,112 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
         }
         printf("REGRESS DONE\n\n");
 
-        if (find_regress("sparkle_change",buf)) {
-            char *s;
-          s=find_regress("sparkle",buf);
-          printf("sparkle now %s\n",s);
-          sparkle = strtoul(s,0L,0);
+        if (find_regress("Save_Preset",buf)) {
+            nvs_stats_t nvs_stats;
+            esp_err_t err;
+            nvs_handle_t my_handle;
+            unsigned slot;
+            char slotname[10];
+            slot = strtoul(find_regress("save_slot",buf),0L,0);
+            preset_t *p = malloc(sizeof(preset_t));
+            memcpy(&p->rings,&rings,sizeof(rings));
+            p->sparkle = sparkle;
+            p->numflicker = numflicker;
+            p->flicker_r = flicker_r;
+            p->flicker_g = flicker_g;
+            p->flicker_b = flicker_b;
+            sprintf(slotname,"preset%d",slot);
+            nvs_get_stats(NULL, &nvs_stats);
+            printf("BEFORE Count: UsedEntries = (%d), FreeEntries = (%d), AllEntries = (%d)\n",
+                nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries);
+            err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
+            ESP_ERROR_CHECK(err);
+            err = nvs_set_blob(my_handle,slotname,p,sizeof(preset_t));
+            ESP_ERROR_CHECK(nvs_commit(my_handle));
+            nvs_close(my_handle);
+            free(p);
+            nvs_get_stats(NULL, &nvs_stats);
+            printf("BEFORE Count: UsedEntries = (%d), FreeEntries = (%d), AllEntries = (%d)\n",
+                nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries);
         }
-        if (find_regress("numflicker_change",buf)) {
-            char *s;
-          s=find_regress("numflicker",buf);
-          printf("numflicker now %s\n",s);
-          numflicker = strtoul(s,0L,0);
+        else if (find_regress("Load_Preset",buf)) {
+            unsigned slot;
+            slot = strtoul(find_regress("save_slot",buf),0L,0);
+            load_preset(slot);
         }
-        if (find_regress("flicker_change",buf)) {
-            char *s;
-          unsigned long rgb;
-          s=find_regress("flicker",buf);
-          rgb = strtoul(&s[3],0L,16);
-          flicker_r = rgb >> 16;
-          flicker_g = (rgb >> 8) & 0xff;
-          flicker_b = rgb & 0xff;
-          printf("flicker now %s %lx\n",&s[3],rgb);
-        }
-        for (i=0;i<RINGS;i++) {
-            char *s;
-            char rr[16];
-            sprintf(rr,"ring%d",i);
-            if (find_regress(rr,buf)) {
-              printf("Set ring %d\n",i);
-                if (find_regress("ring_huespeed_change",buf)) {
-                  s=find_regress("ring_huespeed",buf);
-                  rings[i].huespeed = strtoul(s,0L,0)<<8;
-                  printf("huespeed %d now %lx\n",i,rings[i].huespeed);
+        else if (find_regress("Set",buf)) {
+                if (find_regress("sparkle_change",buf)) {
+                    char *s;
+                  s=find_regress("sparkle",buf);
+                  printf("sparkle now %s\n",s);
+                  sparkle = strtoul(s,0L,0);
                 }
-                if (find_regress("ring_color_change",buf)) {
+                if (find_regress("numflicker_change",buf)) {
+                    char *s;
+                  s=find_regress("numflicker",buf);
+                  printf("numflicker now %s\n",s);
+                  numflicker = strtoul(s,0L,0);
+                }
+                if (find_regress("flicker_change",buf)) {
+                    char *s;
                   unsigned long rgb;
-                  s=find_regress("ring_color",buf);
+                  s=find_regress("flicker",buf);
                   rgb = strtoul(&s[3],0L,16);
-                  rings[i].red = rgb >> 16;
-                  rings[i].green = (rgb >> 8) & 0xff;
-                  rings[i].blue = rgb & 0xff;
-                  printf("color %d now %s %lx\n",i,&s[3],rgb);
+                  flicker_r = rgb >> 16;
+                  flicker_g = (rgb >> 8) & 0xff;
+                  flicker_b = rgb & 0xff;
+                  printf("flicker now %s %lx\n",&s[3],rgb);
                 }
-                if (find_regress("ring_width_change",buf)) {
-                  s=find_regress("ring_width",buf);
-                  rings[i].width = strtoul(s,0L,0);
-                  printf("width %d now %s\n",i,s);
-                }
-                if (find_regress("ring_length_change",buf)) {
-                  s=find_regress("ring_length",buf);
-                  rings[i].len = strtoul(s,0L,0);
-                  printf("length %d now %s\n",i,s);
-                }
-                if (find_regress("ring_mode_change",buf)) {
-                  s=find_regress("ring_mode",buf);
-                  rings[i].mode = strtoul(s,0L,0);
-                  printf("mode %d now %s\n",i,s);
-                }
-                if (find_regress("ring_speed_change",buf)) {
-                  float f;
-                  s=find_regress("ring_speed",buf);
-                  f= strtof(s,0L);
-                  rings[i].speed= f;
-                  printf("speed %d now %f\n",i,f);
-                }
-                if (find_regress("ring_angle_change",buf)) {
-                  s=find_regress("ring_angle",buf);
-                  rings[i].angle= strtoul(s,0L,0);
-                  printf("angle %d now %s\n",i,s);
-                }
-            }
-        }
+                for (i=0;i<RINGS;i++) {
+                    char *s;
+                    char rr[16];
+                    sprintf(rr,"ring%d",i);
+                    if (find_regress(rr,buf)) {
+                      printf("Set ring %d\n",i);
+                        if (find_regress("ring_huespeed_change",buf)) {
+                          s=find_regress("ring_huespeed",buf);
+                          rings[i].huespeed = strtoul(s,0L,0)<<8;
+                          printf("huespeed %d now %lx\n",i,rings[i].huespeed);
+                        }
+                        if (find_regress("ring_color_change",buf)) {
+                          unsigned long rgb;
+                          s=find_regress("ring_color",buf);
+                          rgb = strtoul(&s[3],0L,16);
+                          rings[i].red = rgb >> 16;
+                          rings[i].green = (rgb >> 8) & 0xff;
+                          rings[i].blue = rgb & 0xff;
+                          printf("color %d now %s %lx\n",i,&s[3],rgb);
+                        }
+                        if (find_regress("ring_width_change",buf)) {
+                          s=find_regress("ring_width",buf);
+                          rings[i].width = strtoul(s,0L,0);
+                          printf("width %d now %s\n",i,s);
+                        }
+                        if (find_regress("ring_length_change",buf)) {
+                          s=find_regress("ring_length",buf);
+                          rings[i].len = strtoul(s,0L,0);
+                          printf("length %d now %s\n",i,s);
+                        }
+                        if (find_regress("ring_mode_change",buf)) {
+                          s=find_regress("ring_mode",buf);
+                          rings[i].mode = strtoul(s,0L,0);
+                          printf("mode %d now %s\n",i,s);
+                        }
+                        if (find_regress("ring_speed_change",buf)) {
+                          float f;
+                          s=find_regress("ring_speed",buf);
+                          f= strtof(s,0L);
+                          rings[i].speed= f;
+                          printf("speed %d now %f\n",i,f);
+                        }
+                        if (find_regress("ring_angle_change",buf)) {
+                          s=find_regress("ring_angle",buf);
+                          rings[i].angle= strtoul(s,0L,0);
+                          printf("angle %d now %s\n",i,s);
+                        }
+                    }
+              }
+         }
 
     }
 	ESP_LOGI(TAG,"Index post");
@@ -875,7 +977,14 @@ app_main (void)
 {
     static httpd_handle_t server = NULL;
 
-    ESP_ERROR_CHECK(nvs_flash_init());
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // NVS partition was truncated and needs to be erased
+        // Retry nvs_flash_init
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK( err );
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
@@ -909,6 +1018,7 @@ app_main (void)
 
     gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
 	//test_neopixel();
+
   xTaskCreate(&test_neopixel, "Neopixels", 8192, NULL, 5, NULL);
   xTaskCreate(&console, "Console", 8192, NULL, 5, NULL);
 }

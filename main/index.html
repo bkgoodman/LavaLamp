@@ -8,6 +8,14 @@
   <body>
 <script type="text/javascript">
 
+function allrings(){
+	var i;
+	for (i=0;i<6;i++) {
+	var s = ("ring"+i.toString());
+	var x = document.getElementById(s);
+	x.checked=true;
+	}
+}
 function changed(d){
 	//alert(d.id);
 	var x = document.getElementById(d.id+"_change");
@@ -46,6 +54,7 @@ function changed(d){
 	      <input name="ring4" type="checkbox" id="ring4"></input>
 	      <input name="ring5" type="checkbox" id="ring5"></input>
 		5
+	 	<input type="button" value="All" onclick="allrings();"></input>
 	<h3>Ring Settings</h3>
 	      <div>
 	      <input name="ring_color_change" type="checkbox" id="ring_color_change"></input>
@@ -55,7 +64,7 @@ function changed(d){
 	    <div>
 	      <input name="ring_speed_change" type="checkbox" id="ring_speed_change"></input>
 	      Speed
-	      <input name="ring_speed" type="range" min="-10" max="10" step=0.1 value="0" class="slider" onChange="changed(this);" id="ring_speed">
+	      <input name="ring_speed" type="range" min="-2" max="2" step=0.025 value="0" class="slider" onChange="changed(this);" id="ring_speed">
 		<span id="ring_speed_display"></span>
 	    </div>
 	    <div>
@@ -92,6 +101,23 @@ function changed(d){
 	    </div>
 		<input type="submit" value="Set" name="Set" />
 	  </form>
+
+	  <h3>Presets</h3>
+	<form method="POST">
+		Preset:
+	      <select name="save_slot" id="save_slot">
+		<option value="0">0</option>
+		<option value="1">1</option>
+		<option value="2">2</option>
+		<option value="3">3</option>
+		<option value="4">4</option>
+		<option value="5">5</option>
+		<option value="6">6</option>
+		<option value="7">7</option>
+		</select>
+		<input type="submit" value="Save" name="Save_Preset" />
+		<input type="submit" value="Load" name="Load_Preset" />
+	</form>
   </body>
 </html>
 
