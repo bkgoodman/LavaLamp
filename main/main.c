@@ -1019,7 +1019,7 @@ app_main (void)
     gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
 	//test_neopixel();
 
-  xTaskCreate(&test_neopixel, "Neopixels", 8192, NULL, 5, NULL);
-  xTaskCreate(&console, "Console", 8192, NULL, 5, NULL);
+  xTaskCreatePinnedToCore(&test_neopixel, "Neopixels", 8192, NULL, 5, NULL,1);
+  xTaskCreatePinnedToCore(&console, "Console", 8192, NULL, 1, NULL,0);
 }
 
