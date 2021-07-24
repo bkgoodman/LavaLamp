@@ -31,6 +31,8 @@
 
 #define STORAGE_NAMESPACE "PlasmaLamp"
 
+static const char *TAG = "PlasmaLamp";
+
 //#define	NEOPIXEL_SK6812
 #define	NEOPIXEL_RMT_CHANNEL		RMT_CHANNEL_2
 
@@ -49,17 +51,23 @@ inline float softring(float pos) {
 
 unsigned int globalDelay=10000;
 int mode =0;
+volatile short workphase=0;
 unsigned short sparkle=128;
 unsigned char flicker_r=0;
 unsigned char flicker_g=0;
 unsigned char flicker_b=0;
 unsigned short numflicker=0;
+short preset_running=-1;
+unsigned short fade_in=0;
+unsigned short fade_out=0;
+time_t next_time=0;
+
 int divround(const int n, const int d)
 {
   return ((n < 0) ^ (d < 0)) ? ((n - d/2)/d) : ((n + d/2)/d);
 }
 
-void load_preset(int slot);
+int load_preset(int slot);
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
 	//printf("INT should go to xQueue\r\n");
 
@@ -181,6 +189,18 @@ int getPixel(int p,int pos,int width, int len,int pixels,int angles) {
   return (result > 255)? 255: result;
 }
 
+void advance_slot(){
+  unsigned slot;
+  slot = preset_running+1;
+  ESP_LOGI(TAG,"Advance to preset %d",slot);
+  if ((load_preset(slot) == -1) && (slot != 0)) {
+    ESP_LOGI(TAG,"Failed - trying preset 0");
+    load_preset(0);
+  }
+  time(&next_time);
+  next_time+=10;
+}
+
 static	void test_neopixel(void *parameters)
 {
 	pixel_settings_t px;
@@ -285,76 +305,109 @@ static	void test_neopixel(void *parameters)
 #endif
   while(1) {
     /* Clear All */
+    int level=255;
+    workphase=0;
     for	( int j = 0 ; j < NR_LED ; j ++ )	
           np_set_pixel_rgbw(&px, j , 0, 0, 0, 0);
+
+    workphase++;
+
+    if (!fade_out && next_time) { 
+      time_t current_time;
+      time(&current_time);
+      if (current_time >= next_time) {
+        fade_out=255;
+      }
+    }
+
+    if (fade_out >0) {
+      fade_out--;
+      level = fade_out;
+    }
+
+    if (fade_in > 0) {
+      fade_in--;
+      level = 255-fade_in;
+    }
 
     for (r=0;r<RINGS;r++) {
       rng = &rings[r];
 
-	if (rng->mode == 0) {
-		int p;
-		for(p=0;p<rng->size;p++) {
-			int v;
-			v = getPixel(p,rng->seq,rng->width,rng->len,rng->size,rng->angle);
-			np_set_pixel_rgbw(&px, rng->start + p , (v*rng->red)>>8,(v*rng->green)>>8,(v*rng->blue)>>8,0);
-			
-		}
-	}
-	/* Flame Flicker */
-	if (rng->mode == 1) {
-		int p;
-		for(p=0;p<rng->size;p++) {
-			short r = 0xff;
-			short g = (esp_random() & 0xff);
-			short scale = (esp_random() & 0x3);
-			r = r>>scale;
-			g = r>>scale;
-			np_set_pixel_rgbw(&px, rng->start + p , r,g,0,0);
-			
-		}
-	}
+    if (rng->mode == 0) {
+      int p;
+      for(p=0;p<rng->size;p++) {
+        int v;
+        v = getPixel(p,rng->seq,rng->width,rng->len,rng->size,rng->angle);
+        np_set_pixel_rgbw_level(&px, rng->start + p , (v*rng->red)>>8,(v*rng->green)>>8,(v*rng->blue)>>8,0,level);
+        
+      }
+	  }
+    /* Flame Flicker */
+    if (rng->mode == 1) {
+      int p;
+      for(p=0;p<rng->size;p++) {
+        short r = 0xff;
+        short g = (esp_random() & 0xff);
+        short scale = (esp_random() & 0x3);
+        r = r>>scale;
+        g = r>>scale;
+        np_set_pixel_rgbw_level(&px, rng->start + p , r,g,0,0,level);
+        
+      }
+    }
 
       rng->seq+=rng->speed;
-	while (rng->seq > SEQSIZE)
-		rng->seq -= SEQSIZE;
-	while (rng->seq < -SEQSIZE)
-		rng->seq += SEQSIZE;
-	if (rng->huespeed) {
-		rng->hue += rng->huespeed;
-		hue_to_rgb(rng->hue >> 24,&rng->red,&rng->green,&rng->blue);
-	}
+    while (rng->seq > SEQSIZE)
+      rng->seq -= SEQSIZE;
+    while (rng->seq < -SEQSIZE)
+      rng->seq += SEQSIZE;
+    if (rng->huespeed) {
+      rng->hue += rng->huespeed;
+      hue_to_rgb(rng->hue >> 24,&rng->red,&rng->green,&rng->blue);
     }
-
+  }
+    workphase++;
     if (sparkle) {
       int j = esp_random() %NR_LED;
-      np_set_pixel_rgbw(&px, j , sparkle, sparkle, sparkle, 0);
+      np_set_pixel_rgbw_level(&px, j , sparkle, sparkle, sparkle, 0,level);
     }
+    workphase++;
     if (numflicker) {
-	for (i=0;i<numflicker;i++){
-	      int j = esp_random() %NR_LED;
-	      np_set_pixel_rgbw(&px, j , flicker_r,flicker_g,flicker_b,0);
-	}
+      for (i=0;i<numflicker;i++){
+            int j = esp_random() %NR_LED;
+            np_set_pixel_rgbw_level(&px, j , flicker_r,flicker_g,flicker_b,0,level);
+      }
     }
     /* Handle each ring separately! */
     //taskENTER_CRITICAL();
     //vTaskSuspendAll();
+    workphase++;
     np_show(&px, NEOPIXEL_RMT_CHANNEL);
+    workphase++;
     //xTaskResumeAll();
     //taskEXIT_CRITICAL();
     usleep(globalDelay);
+    workphase++;
+
+    // Do we need to advacne?
+    if (fade_out == 1) {
+      ESP_LOGI(TAG,"Advance Time");
+      advance_slot();
+      fade_out--;
+      fade_in=255;
+      }
+    
   }
 }
 
 static int do_debug_cmd(int argc, char **argv) {
     printf( "Task Name\tStatus\tPrio\tHWM\tTask\tAffinity\n");
     char *stats_buffer = malloc(1024);
-#ifdef USE_TRACE_FACILITY
     vTaskList(stats_buffer);
     printf("%s\n", stats_buffer);
-#else
-    printf("Trace facility disabled\n");
-#endif
     free (stats_buffer);
+    heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
+    printf("Workphase %d\n",workphase);
     return(0);
 }
 
@@ -495,7 +548,6 @@ static	void console(void *parameters) {
       vTaskDelay(1000*1000);
     }
 }
-static const char *TAG = "example";
 
 /* An HTTP GET handler */
 static esp_err_t hello_get_handler(httpd_req_t *req)
@@ -605,7 +657,7 @@ char *find_regress(char *key, char *buf) {
     return 0L;
 }
 
-void load_preset(int slot) {
+int load_preset(int slot) {
     size_t actualSize;
     esp_err_t err;
     nvs_handle_t my_handle;
@@ -617,6 +669,7 @@ void load_preset(int slot) {
     err = nvs_get_blob(my_handle,slotname,0L,&actualSize);
     if (err || actualSize != sizeof(preset_t)) {
       ESP_LOGE(TAG,"Error loading preset %d",slot);
+      return -1;
     } else {
             err = nvs_get_blob(my_handle,slotname,p,&actualSize);
             memcpy(&rings,&p->rings,sizeof(rings));
@@ -629,6 +682,10 @@ void load_preset(int slot) {
     }
     free(p);
     nvs_close(my_handle);
+    preset_running=slot;
+    time(&next_time);
+    next_time += 120; // Advance to next in 10 seconds
+    return 0;
 }
 #define MAX_PAYLOAD 512
 static esp_err_t index_post_handler(httpd_req_t *req) {
@@ -716,6 +773,10 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
             unsigned slot;
             slot = strtoul(find_regress("save_slot",buf),0L,0);
             load_preset(slot);
+        } else if (find_regress("Hold",buf)) {
+            next_time=0;
+        } else if (find_regress("Next_Preset",buf)) {
+            advance_slot();
         }
         else if (find_regress("Set",buf)) {
                 if (find_regress("sparkle_change",buf)) {
@@ -928,6 +989,8 @@ static httpd_handle_t start_webserver(void)
     httpd_handle_t server = NULL;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
+    config.core_id=0;
+
     // Start the httpd server
     ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
     if (httpd_start(&server, &config) == ESP_OK) {
@@ -1019,7 +1082,7 @@ app_main (void)
     gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
 	//test_neopixel();
 
-  xTaskCreatePinnedToCore(&test_neopixel, "Neopixels", 8192, NULL, 5, NULL,1);
+  xTaskCreatePinnedToCore(&test_neopixel, "Neopixels", 8192, NULL, 55, NULL,1);
   xTaskCreatePinnedToCore(&console, "Console", 8192, NULL, 1, NULL,0);
 }
 

@@ -59,6 +59,7 @@ typedef struct pixel_settings {
 
 void np_set_pixel_color(pixel_settings_t *px, uint16_t idx, uint32_t color);
 extern	void	np_set_pixel_rgbw(pixel_settings_t *px, uint16_t index, int r, int g, int b, int w);
+extern	void	np_set_pixel_rgbw_level(pixel_settings_t *px, uint16_t index, int r, int g, int b, int w, int level);
 void np_set_pixel_color_hsb(pixel_settings_t *px, uint16_t idx, float hue, float saturation, float brightness);
 uint32_t np_get_pixel_color(pixel_settings_t *px, uint16_t idx, uint8_t *white);
 void np_show(pixel_settings_t *px, rmt_channel_t channel);

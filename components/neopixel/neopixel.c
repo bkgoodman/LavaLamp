@@ -117,7 +117,23 @@ np_set_pixel_rgbw(
 		}
 	}
 }
-
+extern	void
+np_set_pixel_rgbw_level(
+	pixel_settings_t *px,
+	uint16_t	index,
+	int		r,
+	int		g,
+	int		b,
+	int		w,
+	int		level) {
+	if (level != 255) {
+		r = (r*level)/255;
+		b = (b*level)/255;
+		g = (g*level)/255;
+		w = (w*level)/255;
+	}
+	np_set_pixel_rgbw(px,index,r,g,b,w);
+}
 // Set pixel color at buffer position from HSB color value
 //============================================================================================================
 void np_set_pixel_color_hsb(pixel_settings_t *px, uint16_t idx, float hue, float saturation, float brightness)
@@ -287,7 +303,7 @@ int neopixel_init(int gpioNum, rmt_channel_t channel)
 
 	// Allocate RMT interrupt if needed
 	if (rmt_intr_handle == NULL) {
-		res = esp_intr_alloc(ETS_RMT_INTR_SOURCE, 0, neopixel_handleInterrupt, NULL, &rmt_intr_handle);
+		res = esp_intr_alloc(ETS_RMT_INTR_SOURCE, ESP_INTR_FLAG_LEVEL3, neopixel_handleInterrupt, NULL, &rmt_intr_handle);
 		if (res != ESP_OK) return res;
 	}
 
