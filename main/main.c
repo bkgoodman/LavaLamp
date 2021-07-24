@@ -58,7 +58,7 @@ unsigned char flicker_g=0;
 unsigned char flicker_b=0;
 unsigned short numflicker=0;
 short preset_running=-1;
-unsigned short fade_in=0;
+unsigned short fade_in=512;
 unsigned short fade_out=0;
 time_t next_time=0;
 
@@ -198,7 +198,7 @@ void advance_slot(){
     load_preset(0);
   }
   time(&next_time);
-  next_time+=10;
+  next_time+=60;
 }
 
 static	void test_neopixel(void *parameters)
@@ -303,6 +303,9 @@ static	void test_neopixel(void *parameters)
     usleep(2000*10);
   }
 #endif
+/* Start autoadvance */
+  time(&next_time);
+  next_time+=60;
   while(1) {
     /* Clear All */
     int level=255;
@@ -316,18 +319,18 @@ static	void test_neopixel(void *parameters)
       time_t current_time;
       time(&current_time);
       if (current_time >= next_time) {
-        fade_out=255;
+        fade_out=512;
       }
     }
 
     if (fade_out >0) {
       fade_out--;
-      level = fade_out;
+      level = fade_out/2;
     }
 
     if (fade_in > 0) {
       fade_in--;
-      level = 255-fade_in;
+      level = 255-(fade_in/2);
     }
 
     for (r=0;r<RINGS;r++) {
@@ -394,7 +397,7 @@ static	void test_neopixel(void *parameters)
       ESP_LOGI(TAG,"Advance Time");
       advance_slot();
       fade_out--;
-      fade_in=255;
+      fade_in=512;
       }
     
   }
@@ -683,8 +686,8 @@ int load_preset(int slot) {
     free(p);
     nvs_close(my_handle);
     preset_running=slot;
-    time(&next_time);
-    next_time += 120; // Advance to next in 10 seconds
+    //time(&next_time);
+    //next_time += 10; // Advance to next in 10 seconds
     return 0;
 }
 #define MAX_PAYLOAD 512
@@ -776,7 +779,8 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
         } else if (find_regress("Hold",buf)) {
             next_time=0;
         } else if (find_regress("Next_Preset",buf)) {
-            advance_slot();
+            //advance_slot();
+            fade_out=1024;
         }
         else if (find_regress("Set",buf)) {
                 if (find_regress("sparkle_change",buf)) {

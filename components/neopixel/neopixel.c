@@ -127,10 +127,10 @@ np_set_pixel_rgbw_level(
 	int		w,
 	int		level) {
 	if (level != 255) {
-		r = (r*level)/255;
-		b = (b*level)/255;
-		g = (g*level)/255;
-		w = (w*level)/255;
+		r = ((long)(r*level))/255;
+		b = ((long)(b*level))/255;
+		g = ((long)(g*level))/255;
+		w = ((long)(w*level))/255;
 	}
 	np_set_pixel_rgbw(px,index,r,g,b,w);
 }
