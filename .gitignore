@@ -2,3 +2,9 @@ Paper Diffuser.studio3
 sdkconfig
 sdkconfig.old
 build/
+main/lavalamp-certificate.pem.crt
+main/lavalamp-private.pem.key
+main/lavalamp-public.pem.key
+main/client.crt
+main/client.key
+main/CA.crt

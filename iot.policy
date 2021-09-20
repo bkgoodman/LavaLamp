@@ -1,0 +1,42 @@
+***
+*** NOTE: The client_id specified in mqtt connection in the code must be set for the iot:Connect to identify properly!!!
+***
+
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iot:GetThingShadow",
+        "iot:UpdateThingShadow"
+      ],
+      "Resource": [
+        "arn:aws:iot:us-east-1:583841319539:thing/${iot:Connection.Thing.ThingName}"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iot:Subscribe",
+        "iot:receive",
+        "iot:Publish"
+      ],
+      "Resource": [
+        "arn:aws:iot:us-east-1:583841319539:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/*",
+        "arn:aws:iot:us-east-1:583841319539:topic/$aws/things/${iot:Connection.Thing.ThingName}/*",
+        "*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iot:Connect"
+      ],
+      "Resource": [
+        "arn:aws:iot:us-east-1:583841319539:client/${iot:Connection.Thing.ThingName}"
+      ]
+    }
+  ]
+}

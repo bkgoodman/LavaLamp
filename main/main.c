@@ -18,8 +18,10 @@
 #include "freertos/task.h"
 #include "protocol_examples_common.h"
 
+#include "mqtt_client.h"
 #include <esp_http_server.h>
 
+#include "bkg_mqtt.h"
 #define GPIO_INPUT_IO_0    0
 #define ESP_INTR_FLAG_DEFAULT 0
 #define	NEOPIXEL_PORT	18
@@ -32,6 +34,9 @@
 #define STORAGE_NAMESPACE "PlasmaLamp"
 
 static const char *TAG = "PlasmaLamp";
+
+
+#define GPIO_LED GPIO_NUM_2
 
 //#define	NEOPIXEL_SK6812
 #define	NEOPIXEL_RMT_CHANNEL		RMT_CHANNEL_2
@@ -1068,10 +1073,8 @@ app_main (void)
     ESP_ERROR_CHECK(esp_event_handler_register(ETH_EVENT, ETHERNET_EVENT_DISCONNECTED, &disconnect_handler, &server));
 #endif // CONFIG_EXAMPLE_CONNECT_ETHERNET
 
-    /* Start the server for the first time */
-    server = start_webserver();
-
-
+		gpio_set_direction(GPIO_LED,GPIO_MODE_OUTPUT);
+		gpio_set_level(GPIO_LED,1);
 
   		// Set Button handler 
     gpio_config_t io_conf;
@@ -1085,6 +1088,12 @@ app_main (void)
 
     gpio_isr_handler_add(GPIO_INPUT_IO_0, gpio_isr_handler, (void*) GPIO_INPUT_IO_0);
 	//test_neopixel();
+    
+    /* Start the server for the first time */
+    server = start_webserver();
+
+    mqtt_app_start();
+
 
   xTaskCreatePinnedToCore(&test_neopixel, "Neopixels", 8192, NULL, 55, NULL,1);
   xTaskCreatePinnedToCore(&console, "Console", 8192, NULL, 1, NULL,0);

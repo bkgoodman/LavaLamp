@@ -1,5 +1,6 @@
 set(srcs 
-		"main.c"
+		"main.c" 
+    "plasma_mqtt.c"
     )
 
 
