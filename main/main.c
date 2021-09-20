@@ -552,6 +552,28 @@ static int do_set_cmd(int argc, char **argv) {
   
   return 0;
 }
+
+static int do_dump_cmd(int argc, char **argv) {
+  int i;
+  ring_t *rng;
+
+  printf("sparkle=%d;\n",sparkle);
+  printf("globalDelay=%d;\n",globalDelay);
+  printf("flicker_r=%d;\n",flicker_r);
+  printf("flicker_g=%d;\n",flicker_g);
+  printf("flicker_b=%d;\n",flicker_b);
+  printf("numflicker=%d;\n",numflicker);
+
+  for (i=0;i < RINGS;i++)
+  {
+    rng = &rings[i];
+    printf(" rng[%d]->speed=%f; rng[%d]->pos=%d; rng[%d]->mode=%d; rng[%d]->seq=%f;\n",i,rng->speed,i,rng->pos,i,rng->mode,i,rng->seq);
+    printf(" rng[%d]->red=%d; rng[%d]->green=%d; rng[%d]->blue=%d; rng[%d]->angle=%d;\n",i,rng->red,i,rng->green,i,rng->blue,i,rng->angle);
+    printf(" rng[%d]->width=%d; rng[%d]->len=%d; rng[%d]->huespeed=%lu\n",i,rng->width,i,rng->len,i,rng->huespeed);
+  } 
+  return(0);
+}
+
 static int do_showring_cmd(int argc, char **argv) {
   int r;
   char *str1, *token, *subtoken, *subtoken2;
@@ -637,6 +659,14 @@ static void initialize_console(void)
         .argtable = 0L
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&ring_cmd));
+        const esp_console_cmd_t dump_cmd = {
+        .command = "dump",
+        .help = "Dump state",
+        .hint = NULL,
+        .func = &do_dump_cmd,
+        .argtable = 0L
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&dump_cmd));
     const esp_console_cmd_t set_cmd = {
         .command = "set",
         .help = "Set Parameters",
@@ -671,6 +701,7 @@ static void initialize_console(void)
         .argtable = 0L
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&mode_cmd));
+    ESP_LOGI(TAG,"Console handlers initialized\n");
 }
 
 static	void console(void *parameters) {
