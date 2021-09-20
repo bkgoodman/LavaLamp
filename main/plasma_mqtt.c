@@ -52,13 +52,22 @@ static void network_restart_task(void* arg) {
 void mqtt_app_start(void);
 static void network_restart_task(void* arg);
 
+void mqtt_report_powerState(bool powerState) {
+	char temp[60];
+	sprintf(temp,"{\"state\":{\"reported\": { \"power\": \"%s\" }}}",powerState? "ON":"OFF");
+	ESP_LOGI(TAG, "power change - report");
+	if (client_global)
+		esp_mqtt_client_publish(client_global, CAT3_STR("$aws/things/" ,THING_NAME, "/shadow/update"), temp, 0, 0, 0);
+}
 static void got_msg(char *topic, int len, char *data) {
 	char temp[60];
+	unsigned short reportFlag=0;
   	ESP_LOGI(TAG,"Got Topic %.*s DIFF=%d\r\n", len, topic,len);
 	
 	if (!memcmp(topic,GET_ACCEPTED,len)) {
 			// On bootup read the last state of things
 			cJSON *root = 0L;
+			cJSON *lastpower = 0L;
       		ESP_LOGI(TAG, "Got last shadow response");
 
 			root = cJSON_Parse(data);
@@ -70,27 +79,31 @@ static void got_msg(char *topic, int len, char *data) {
 
 			if (desired) {
 				cJSON *power = cJSON_GetObjectItem(desired,"power");
+				if (reported) {
+						cJSON *lastpower = cJSON_GetObjectItem(desired,"power");
+						if (lastpower)
+							ESP_LOGI(TAG, "Power had been reported as %s",power->valuestring);
+						if (lastpower && strcmp(lastpower->valuestring,power->valuestring)) {
+							reportFlag = REPORTFLAG_NOMQTT;
+						}
+					}
 				if (power && power->valuestring) {
-					ESP_LOGI(TAG, "Remember Relay1 to prior %s",power->valuestring);
+					/* Avoid reporting if we've desired already equals reported */
+					ESP_LOGI(TAG, "Power Desired to be  %s",power->valuestring);
+					if (lastpower && !strcmp(lastpower->valuestring,power->valuestring))
+						reportFlag |= REPORTFLAG_NOMQTT;
 					if (!strcmp(power->valuestring,"ON")) {
 						//gpio_set_level(GPIO_RELAY1,1); 
 						//gpio_set_level(GPIO_LED,1); 
 						//relay1state=1;
+						plasma_powerOn(reportFlag);
 					} else {
 						//gpio_set_level(GPIO_RELAY1,0); 
 						//gpio_set_level(GPIO_LED,0); 
 						//relay1state=0;
+						plasma_powerOff(reportFlag);
 					}
-					if (reported) {
-						cJSON *lastpower = cJSON_GetObjectItem(desired,"power");
-						if (reported && strcmp(lastpower->valuestring,power->valuestring)) {
-							sprintf(temp,"{\"state\":{\"reported\": { \"power\": \"%s\" }}}",power->valuestring);
-							ESP_LOGI(TAG, "power changed - report");
-							if (client_global)
-								esp_mqtt_client_publish(client_global, CAT3_STR("$aws/things/" ,THING_NAME, "/shadow/update"), temp, 0, 0, 0);
-								
-						}
-					}
+
 				}
 			}
 
@@ -114,17 +127,26 @@ out:
 						if (!state) goto out2;
 						cJSON *desired = cJSON_GetObjectItem(state,"desired");
 						if (desired) {
-
 							cJSON *power = cJSON_GetObjectItem(desired,"power");
+
+							cJSON *reported = cJSON_GetObjectItem(state,"reported");
+							cJSON *were = 0L;
+							if (reported) were = cJSON_GetObjectItem(reported,"power");
+							if (power && were && !strcmp(were->valuestring,power->valuestring))
+								reportFlag |= REPORTFLAG_NOMQTT;
+
 							if (power && power->valuestring) {
-								ESP_LOGI(TAG, "Set Relay1 to %s",power->valuestring);
+								ESP_LOGI(TAG, "Set Power to %s",power->valuestring);
 								if (!strcmp(power->valuestring,"ON")) {
 									//gpio_set_level(GPIO_RELAY1,1); 
 									//gpio_set_level(GPIO_LED,1); 
+									plasma_powerOn(reportFlag);
 								} else {
 									//gpio_set_level(GPIO_RELAY1,0); 
 									//gpio_set_level(GPIO_LED,0); 
+									plasma_powerOff(reportFlag);
 								}
+								/*
 								cJSON *reported = cJSON_GetObjectItem(state,"reported");
 								if (client_global && reported) {
 									cJSON *were = cJSON_GetObjectItem(reported,"power");
@@ -134,6 +156,7 @@ out:
 										esp_mqtt_client_publish(client_global,CAT3_STR( "$aws/things/", THING_NAME, "/shadow/update"), temp, 0, 0, 0);
 									}
 								}
+								*/
 							}
 						}
 

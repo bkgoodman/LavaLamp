@@ -35,7 +35,7 @@
 
 static const char *TAG = "PlasmaLamp";
 
-
+bool load_powerState();
 #define GPIO_LED GPIO_NUM_2
 
 //#define	NEOPIXEL_SK6812
@@ -56,6 +56,7 @@ inline float softring(float pos) {
 
 unsigned int globalDelay=10000;
 int mode =0;
+bool powerState=false;
 volatile short workphase=0;
 unsigned short sparkle=128;
 unsigned char flicker_r=0;
@@ -72,6 +73,46 @@ int divround(const int n, const int d)
   return ((n < 0) ^ (d < 0)) ? ((n - d/2)/d) : ((n + d/2)/d);
 }
 
+/* TODO - Race condition changing fades wile plasma thread running??? */
+/* TODO - Need MQTT report when done*/ 
+
+/* Avoid unnecessary loops - i.e. if "X" told you to power on - Don't save back to "X" */
+void plasma_powerOn(unsigned short reportFlags) {
+  if (powerState) return;
+  powerState = true;
+  if (fade_out) {
+    fade_in = fade_out;
+    fade_out = 0;
+  }
+  else
+    fade_in = 512;
+
+  if (!(reportFlags & REPORTFLAG_NOMQTT))
+    mqtt_report_powerState(true);
+
+  
+  if (!(reportFlags & REPORTFLAG_NONVS))
+    save_powerState();
+  workphase=0;
+  
+}
+
+void plasma_powerOff(unsigned short reportFlags) {
+  if (!powerState) return;
+  powerState = false;
+  if (fade_in) {
+    fade_out = fade_in;
+    fade_in=0;
+  }
+  else
+    fade_out=512; // Start fade
+
+  if (!(reportFlags & REPORTFLAG_NOMQTT))
+    mqtt_report_powerState(false);
+
+  if (!(reportFlags & REPORTFLAG_NONVS))
+    save_powerState();
+}
 int load_preset(int slot);
 static void IRAM_ATTR gpio_isr_handler(void* arg) {
 	//printf("INT should go to xQueue\r\n");
@@ -274,6 +315,8 @@ static	void test_neopixel(void *parameters)
 	np_show(&px, NEOPIXEL_RMT_CHANNEL);
 
   // If we have a preset - use it
+  powerState = load_powerState();
+  printf("Power state loaded from NVS is %s\n",powerState?"ON":"OFF");
   load_preset(0);
 #if 0
   short pos=0;
@@ -311,7 +354,8 @@ static	void test_neopixel(void *parameters)
 /* Start autoadvance */
   time(&next_time);
   next_time+=60;
-  while(1) {
+  while(1) 
+    if (powerState || fade_out){ 
     /* Clear All */
     int level=255;
     workphase=0;
@@ -402,10 +446,13 @@ static	void test_neopixel(void *parameters)
       ESP_LOGI(TAG,"Advance Time");
       advance_slot();
       fade_out--;
-      fade_in=512;
+      if (powerState)
+        fade_in=512;
       }
     
   }
+  else 
+    usleep(globalDelay); // Power "off"
 }
 
 static int do_debug_cmd(int argc, char **argv) {
@@ -417,6 +464,20 @@ static int do_debug_cmd(int argc, char **argv) {
     heap_caps_print_heap_info(MALLOC_CAP_DEFAULT);
     printf("Workphase %d\n",workphase);
     return(0);
+}
+static int do_cli_power(int argc, char **argv) {
+  if (argc < 2)
+    printf("Power state is %s\n",powerState?"on":"off");
+  else if (!strcmp("on",argv[1])) {
+    printf("Turning powerState ON\n");
+    plasma_powerOn(0);
+  }
+  else if (!strcmp("off",argv[1])) {
+    printf("Turning powerState OFF\n");
+    plasma_powerOff(0);
+  }
+  else printf("Powerstate must be \"on\" or \"off\"\n");
+  return 0;
 }
 
 static int do_set_cmd(int argc, char **argv) {
@@ -546,6 +607,14 @@ static void initialize_console(void)
         .argtable = 0L
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&debug_cmd));
+    const esp_console_cmd_t power_cmd = {
+        .command = "power",
+        .help = "Power State",
+        .hint = NULL,
+        .func = &do_cli_power,
+        .argtable = 0L
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&power_cmd));
 }
 
 static	void console(void *parameters) {
@@ -663,6 +732,38 @@ char *find_regress(char *key, char *buf) {
           buf+= strlen(buf)+1;
         }
     return 0L;
+}
+
+// 0 means "off" - nonzero means "on" - errors default to "off"
+bool load_powerState() {
+    esp_err_t err;
+    unsigned char v;
+    nvs_handle_t my_handle;
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
+    ESP_ERROR_CHECK(err);
+    err = nvs_get_u8(my_handle,"powerState",&v);
+    if (err != ESP_OK)
+      v=0;
+    nvs_close(my_handle);
+    return (v!=0);
+}
+
+
+void save_powerState() {
+    esp_err_t err;
+    nvs_stats_t nvs_stats;
+    nvs_handle_t my_handle;
+    nvs_get_stats(NULL, &nvs_stats);
+    printf("BEFORE Save Count: UsedEntries = (%d), FreeEntries = (%d), AllEntries = (%d)\n",
+        nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries);
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
+    ESP_ERROR_CHECK(err);
+    err = nvs_set_u8(my_handle,"powerState",powerState? 1 : 0);
+    ESP_ERROR_CHECK(nvs_commit(my_handle));
+    nvs_close(my_handle);
+    nvs_get_stats(NULL, &nvs_stats);
+    printf("AFTER save Count: UsedEntries = (%d), FreeEntries = (%d), AllEntries = (%d)\n",
+        nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries);
 }
 
 int load_preset(int slot) {
@@ -786,6 +887,12 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
         } else if (find_regress("Next_Preset",buf)) {
             //advance_slot();
             fade_out=1024;
+        } else if (find_regress("Power",buf)) {
+            char *s=find_regress("sparkle",buf);
+            if (s && !strcmp(s,"on"))
+              plasma_powerOn(0);
+            else 
+              plasma_powerOff(0);
         }
         else if (find_regress("Set",buf)) {
                 if (find_regress("sparkle_change",buf)) {
