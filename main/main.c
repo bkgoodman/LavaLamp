@@ -36,6 +36,10 @@
 static const char *TAG = "PlasmaLamp";
 
 bool load_powerState();
+void change_displayMode(short newMode,unsigned short reportFlags);
+short load_displayMode();
+void save_displayMode();
+
 #define GPIO_LED GPIO_NUM_2
 
 //#define	NEOPIXEL_SK6812
@@ -55,7 +59,11 @@ inline float softring(float pos) {
 
 
 unsigned int globalDelay=10000;
+/* Slot is the CURRENT things running.
+ MODE is the desired SETTING. These often equate - but a 
+ MODE of 10 means we want to auto-advance SLOTs! */
 int mode =0;
+#define MODE_AUTOADVANCE (10)
 bool powerState=false;
 volatile short workphase=0;
 unsigned short sparkle=128;
@@ -88,13 +96,13 @@ void plasma_powerOn(unsigned short reportFlags) {
     fade_in = 512;
 
   if (!(reportFlags & REPORTFLAG_NOMQTT))
-    mqtt_report_powerState(true);
+    mqtt_report_powerState(true,reportFlags);
 
   
   if (!(reportFlags & REPORTFLAG_NONVS))
     save_powerState();
   workphase=0;
-  
+
 }
 
 void plasma_powerOff(unsigned short reportFlags) {
@@ -108,7 +116,7 @@ void plasma_powerOff(unsigned short reportFlags) {
     fade_out=512; // Start fade
 
   if (!(reportFlags & REPORTFLAG_NOMQTT))
-    mqtt_report_powerState(false);
+    mqtt_report_powerState(false,reportFlags);
 
   if (!(reportFlags & REPORTFLAG_NONVS))
     save_powerState();
@@ -237,7 +245,10 @@ int getPixel(int p,int pos,int width, int len,int pixels,int angles) {
 
 void advance_slot(){
   unsigned slot;
-  slot = preset_running+1;
+  if (mode == MODE_AUTOADVANCE)
+    slot = preset_running+1;
+  else 
+    slot = mode;
   ESP_LOGI(TAG,"Advance to preset %d",slot);
   if ((load_preset(slot) == -1) && (slot != 0)) {
     ESP_LOGI(TAG,"Failed - trying preset 0");
@@ -245,6 +256,24 @@ void advance_slot(){
   }
   time(&next_time);
   next_time+=60;
+}
+
+void change_displayMode(short newMode,unsigned short reportFlags) {
+  if (mode == newMode) return;
+  mode = newMode;
+
+  ESP_LOGI(TAG,"Change to mode %d",mode);
+
+
+  fade_out = 512;
+  time(&next_time);
+  next_time+=60;
+  if (!(reportFlags & REPORTFLAG_NOMQTT)) {
+    mqtt_report_displayMode(newMode,reportFlags);
+  }
+  if (!(reportFlags & REPORTFLAG_NONVS)) {
+    save_displayMode();
+  }
 }
 
 static	void test_neopixel(void *parameters)
@@ -316,8 +345,9 @@ static	void test_neopixel(void *parameters)
 
   // If we have a preset - use it
   powerState = load_powerState();
-  printf("Power state loaded from NVS is %s\n",powerState?"ON":"OFF");
-  load_preset(0);
+  mode = load_displayMode();
+  printf("Power state loaded from NVS is %s Mode %d\n",powerState?"ON":"OFF",mode);
+  load_preset(mode == MODE_AUTOADVANCE ? 0 : mode); /* Mode and Slot are kind of equalish?? */
 #if 0
   short pos=0;
   short color=0;
@@ -364,7 +394,7 @@ static	void test_neopixel(void *parameters)
 
     workphase++;
 
-    if (!fade_out && next_time) { 
+    if (!fade_out && mode == MODE_AUTOADVANCE && next_time) { 
       time_t current_time;
       time(&current_time);
       if (current_time >= next_time) {
@@ -443,8 +473,10 @@ static	void test_neopixel(void *parameters)
 
     // Do we need to advacne?
     if (fade_out == 1) {
+
       ESP_LOGI(TAG,"Advance Time");
       advance_slot();
+    
       fade_out--;
       if (powerState)
         fade_in=512;
@@ -470,16 +502,30 @@ static int do_cli_power(int argc, char **argv) {
     printf("Power state is %s\n",powerState?"on":"off");
   else if (!strcmp("on",argv[1])) {
     printf("Turning powerState ON\n");
-    plasma_powerOn(0);
+    plasma_powerOn(REPORTFLAG_DESIRED);
   }
   else if (!strcmp("off",argv[1])) {
     printf("Turning powerState OFF\n");
-    plasma_powerOff(0);
+    plasma_powerOff(REPORTFLAG_DESIRED);
   }
   else printf("Powerstate must be \"on\" or \"off\"\n");
   return 0;
 }
-
+static int do_cli_mode(int argc, char **argv) {
+  short newmode=-1;
+  printf("Mode  is %d\n",mode);
+  if (argc < 2)
+    return (0);
+  else if (!strcmp("auto",argv[1])) {
+    newmode = MODE_AUTOADVANCE;
+  }
+  else 
+    newmode = atoi(argv[1]);
+  
+  printf("Changing mode to %d\n",newmode);
+  change_displayMode(newmode,REPORTFLAG_DESIRED);
+  return 0;
+}
 static int do_set_cmd(int argc, char **argv) {
   if (argc < 2)
     return 0;
@@ -613,8 +659,18 @@ static void initialize_console(void)
         .hint = NULL,
         .func = &do_cli_power,
         .argtable = 0L
-    };
+    };    
+    
     ESP_ERROR_CHECK(esp_console_cmd_register(&power_cmd));
+    
+    const esp_console_cmd_t mode_cmd = {
+        .command = "mode",
+        .help = "Display Mode",
+        .hint = NULL,
+        .func = &do_cli_mode,
+        .argtable = 0L
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&mode_cmd));
 }
 
 static	void console(void *parameters) {
@@ -747,7 +803,18 @@ bool load_powerState() {
     nvs_close(my_handle);
     return (v!=0);
 }
-
+short load_displayMode() {
+    esp_err_t err;
+    unsigned char v;
+    nvs_handle_t my_handle;
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
+    ESP_ERROR_CHECK(err);
+    err = nvs_get_u8(my_handle,"displayMode",&v);
+    if (err != ESP_OK)
+      v=MODE_AUTOADVANCE;
+    nvs_close(my_handle);
+    return (v);
+}
 
 void save_powerState() {
     esp_err_t err;
@@ -765,7 +832,22 @@ void save_powerState() {
     printf("AFTER save Count: UsedEntries = (%d), FreeEntries = (%d), AllEntries = (%d)\n",
         nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries);
 }
-
+void save_displayMode() {
+    esp_err_t err;
+    nvs_stats_t nvs_stats;
+    nvs_handle_t my_handle;
+    nvs_get_stats(NULL, &nvs_stats);
+    printf("BEFORE Save Count: UsedEntries = (%d), FreeEntries = (%d), AllEntries = (%d)\n",
+        nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries);
+    err = nvs_open(STORAGE_NAMESPACE, NVS_READWRITE, &my_handle);
+    ESP_ERROR_CHECK(err);
+    err = nvs_set_u8(my_handle,"displayMode",mode);
+    ESP_ERROR_CHECK(nvs_commit(my_handle));
+    nvs_close(my_handle);
+    nvs_get_stats(NULL, &nvs_stats);
+    printf("AFTER save Count: UsedEntries = (%d), FreeEntries = (%d), AllEntries = (%d)\n",
+        nvs_stats.used_entries, nvs_stats.free_entries, nvs_stats.total_entries);
+}
 int load_preset(int slot) {
     size_t actualSize;
     esp_err_t err;
@@ -886,7 +968,7 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
             next_time=0;
         } else if (find_regress("Next_Preset",buf)) {
             //advance_slot();
-            fade_out=1024;
+            fade_out=512;
         } else if (find_regress("Power",buf)) {
             char *s=find_regress("sparkle",buf);
             if (s && !strcmp(s,"on"))

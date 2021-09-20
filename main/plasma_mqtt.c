@@ -52,15 +52,27 @@ static void network_restart_task(void* arg) {
 void mqtt_app_start(void);
 static void network_restart_task(void* arg);
 
-void mqtt_report_powerState(bool powerState) {
-	char temp[60];
-	sprintf(temp,"{\"state\":{\"reported\": { \"power\": \"%s\" }}}",powerState? "ON":"OFF");
-	ESP_LOGI(TAG, "power change - report");
+void mqtt_report_powerState(bool powerState, unsigned short requestFlags) {
+	char t[90];
+	char *temp = t;
+	temp += sprintf(temp,"{\"state\":{\"reported\":{\"power\":\"%s\"}}",powerState? "ON":"OFF");
+	if (requestFlags & REPORTFLAG_DESIRED) temp += sprintf(temp,",{\"desired\":{\"power\":\"%s\"}}",powerState? "ON":"OFF");
+	temp += sprintf(temp,"}");
+	ESP_LOGI(TAG, "power change - report: %s",t);
 	if (client_global)
-		esp_mqtt_client_publish(client_global, CAT3_STR("$aws/things/" ,THING_NAME, "/shadow/update"), temp, 0, 0, 0);
+		esp_mqtt_client_publish(client_global, CAT3_STR("$aws/things/" ,THING_NAME, "/shadow/update"), t, 0, 0, 0);
+}
+void mqtt_report_displayMode(short displayMode, unsigned short requestFlags) {
+	char t[90];
+	char *temp = t;
+	temp += sprintf(temp,"{\"state\":{\"reported\": { \"mode\": %d }}",displayMode);
+	if (requestFlags & REPORTFLAG_DESIRED) temp += sprintf(temp,",{\"desired\": { \"mode\": %d }}",displayMode);
+	temp += sprintf(temp,"}");
+	ESP_LOGI(TAG, "mode change - report: %s",t);
+	if (client_global)
+		esp_mqtt_client_publish(client_global, CAT3_STR("$aws/things/" ,THING_NAME, "/shadow/update"), t, 0, 0, 0);
 }
 static void got_msg(char *topic, int len, char *data) {
-	char temp[60];
 	unsigned short reportFlag=0;
   	ESP_LOGI(TAG,"Got Topic %.*s DIFF=%d\r\n", len, topic,len);
 	
@@ -126,10 +138,10 @@ out:
 						cJSON *state = cJSON_GetObjectItem(current,"state");
 						if (!state) goto out2;
 						cJSON *desired = cJSON_GetObjectItem(state,"desired");
+						cJSON *reported = cJSON_GetObjectItem(state,"reported");
 						if (desired) {
+							/* Power */
 							cJSON *power = cJSON_GetObjectItem(desired,"power");
-
-							cJSON *reported = cJSON_GetObjectItem(state,"reported");
 							cJSON *were = 0L;
 							if (reported) were = cJSON_GetObjectItem(reported,"power");
 							if (power && were && !strcmp(were->valuestring,power->valuestring))
@@ -138,25 +150,23 @@ out:
 							if (power && power->valuestring) {
 								ESP_LOGI(TAG, "Set Power to %s",power->valuestring);
 								if (!strcmp(power->valuestring,"ON")) {
-									//gpio_set_level(GPIO_RELAY1,1); 
-									//gpio_set_level(GPIO_LED,1); 
 									plasma_powerOn(reportFlag);
 								} else {
-									//gpio_set_level(GPIO_RELAY1,0); 
-									//gpio_set_level(GPIO_LED,0); 
 									plasma_powerOff(reportFlag);
 								}
-								/*
-								cJSON *reported = cJSON_GetObjectItem(state,"reported");
-								if (client_global && reported) {
-									cJSON *were = cJSON_GetObjectItem(reported,"power");
-									if (were && were->valuestring && strcmp(were->valuestring,power->valuestring)) {
-										// Lights CHANGED - report
-										sprintf(temp,"{\"state\":{\"reported\": { \"power\": \"%s\" }}}",power->valuestring);
-										esp_mqtt_client_publish(client_global,CAT3_STR( "$aws/things/", THING_NAME, "/shadow/update"), temp, 0, 0, 0);
-									}
-								}
-								*/
+							}
+							/* Mode */
+							reportFlag = 0;
+							cJSON *mode = cJSON_GetObjectItem(desired,"mode");
+							were = 0L;
+							if (reported) were = cJSON_GetObjectItem(reported,"mode");
+							if (mode && were && were->valueint==mode->valueint)
+								reportFlag |= REPORTFLAG_NOMQTT;
+
+							if (mode) {
+								ESP_LOGI(TAG, "Set Mode to %d",mode->valueint);
+								change_displayMode(mode->valueint,reportFlag);
+								
 							}
 						}
 
