@@ -23,19 +23,44 @@
 #include "lwip/sys.h"
 #include <lwip/netdb.h>
 
-
+#include "data.h"
 #define PORT                        23
 #define KEEPALIVE_IDLE              5
 #define KEEPALIVE_INTERVAL          5
 #define KEEPALIVE_COUNT             4
 
 static const char *TAG = "telnet";
-
+//void telnet_command_handler(int sock, char *buffer);
 static void do_retransmit(const int sock)
 {
     int len;
     char rx_buffer[128];
+    int pos=0;
+    int i;
+    
+    printf("Telnet Console Connected\n");
+    do {
+        len = recv(sock, &rx_buffer[pos], sizeof(rx_buffer)-(pos + 1), 0);
+        for (i=0;i<len+pos;i++) {
+            if ((rx_buffer[i] == '\n') || (rx_buffer[i] == '\r')) {
+                rx_buffer[i] = (char) 0;
+                printf("TELNET COMMAND \"%s\"\n",&rx_buffer[pos]);
+                telnet_command_handler(sock, &moderx_buffer[pos]);
+                int s=i+1;
+                for (i=s;i<(len+pos);i++) {
+                    rx_buffer[i-s] = rx_buffer[i];
+                }
+                pos = 0;
+                len = (len+pos)-s;
+                rx_buffer[len+1]=(char)0;
+                printf("Buffer rezeroed len %d with \"%s\"\n",len,rx_buffer);
+                break;
+            }
+        }
+    } while (len >0);
+    printf("Telnet Console Disconnected\n");
 
+#if 0
     do {
         len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
         if (len < 0) {
@@ -58,6 +83,7 @@ static void do_retransmit(const int sock)
             }
         }
     } while (len > 0);
+#endif
 }
 
 void tcp_server_task(void *pvParameters)

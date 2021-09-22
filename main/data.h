@@ -89,3 +89,4 @@ void disconnect_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data);
 void test_neopixel(void *parameters);
 int load_preset(int slot);
+void telnet_command_handler(int sock, char *buffer);
