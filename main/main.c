@@ -39,6 +39,7 @@ bool load_powerState();
 void change_displayMode(short newMode,unsigned short reportFlags);
 short load_displayMode();
 void save_displayMode();
+void tcp_server_task(void *pvParameters);
 
 #define GPIO_LED GPIO_NUM_2
 
@@ -1000,11 +1001,9 @@ static esp_err_t index_post_handler(httpd_req_t *req) {
         } else if (find_regress("Next_Preset",buf)) {
             //advance_slot();
             fade_out=512;
-        } else if (find_regress("Power",buf)) {
-            char *s=find_regress("sparkle",buf);
-            if (s && !strcmp(s,"on"))
+        } else if (find_regress("power_on",buf)) {
               plasma_powerOn(0);
-            else 
+        } else if (find_regress("power_off",buf)) {
               plasma_powerOff(0);
         }
         else if (find_regress("Set",buf)) {
@@ -1316,6 +1315,7 @@ app_main (void)
 
 
   xTaskCreatePinnedToCore(&test_neopixel, "Neopixels", 8192, NULL, 55, NULL,1);
+  xTaskCreatePinnedToCore(tcp_server_task, "tcp_server", 4096, (void*)0L, 5, NULL,0);
   xTaskCreatePinnedToCore(&console, "Console", 8192, NULL, 1, NULL,0);
 }
 

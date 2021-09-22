@@ -1,6 +1,7 @@
 set(srcs 
 		"main.c" 
     "plasma_mqtt.c"
+    "telnet.c"
     )
 
 
