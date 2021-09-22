@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
-#include <math.h>
 #include <string.h>
 #include "esp_wifi.h"
-#include "esp_system.h"
+#include <esp_system.h>
 #include "nvs_flash.h"
 #include "esp_event.h"
 #include "esp_heap_trace.h"
@@ -14,6 +13,7 @@
 #include "freertos/queue.h"
 #include "freertos/timers.h"
 #include "esp_sleep.h"
+#include <driver/gpio.h>
 
 #include "cJSON.h"
 #include "esp_log.h"

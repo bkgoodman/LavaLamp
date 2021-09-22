@@ -2,6 +2,9 @@ set(srcs
 		"main.c" 
     "plasma_mqtt.c"
     "telnet.c"
+		"leds.c"
+		"console.c"
+		"http.c"
     )
 
 
